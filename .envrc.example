@@ -1,0 +1,29 @@
+# Slack credentials for .claude/hooks/ask-slack.mjs (and slack-doctor.mjs).
+#
+# Copy to `.envrc` (direnv) or `.env`, uncomment the three lines, and fill in the values.
+# ⚠ `.envrc` and `.env` are gitignored. ⚠ **This file is not** — never put a real token in it.
+#
+# ⚠ The hooks never `source` these files. They read only the one line for the one variable
+#   they need, because .envrc is arbitrary shell code.
+# ⚠ Environment variables win; the file is only the fallback.
+# ⚠ When any of the three is absent, ask-slack.mjs falls back to asking in the terminal.
+#   It never blocks the work.
+#
+# ⚠ Never leave a name assigned to nothing (`SLACK_CHANNEL_ID=`). The reader takes the next
+#   non-empty line as the value — so an empty assignment reads as "set", to the wrong thing,
+#   and the terminal fallback never fires. ⚠ Leave the line commented out instead.
+#
+# Exactly two Slack scopes are needed: chat:write and connections:write.
+# ⚠ No history scopes — replies typed into the thread are not read.
+#
+# Check the setup with:  node .claude/hooks/slack-doctor.mjs   (posts nothing)
+
+# Socket Mode app-level token (connections:write)
+# export SLACK_APP_TOKEN=xapp-...
+
+# Bot token — posting and modals (chat:write)
+# export SLACK_BOT_TOKEN=xoxb-...
+
+# Channel to post the question into.
+# ⚠ The bot must be a member of it. Private channels work; invite the bot with /invite.
+# export SLACK_CHANNEL_ID=C...
