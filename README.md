@@ -63,6 +63,18 @@ The threat model is [`docs/DESIGN.md`](docs/DESIGN.md) § 4; the rules are
 ⚠ **Under construction, one layer at a time.** What works today, and which check proves it, is
 [`docs/SPEC.md`](docs/SPEC.md) — ⚠ **and only that file.**
 
+## Running it
+
+Requires Go (see `go.mod`). No other dependency.
+
+```sh
+go run ./cmd/connect-doctor -addr 127.0.0.1:8080
+# open http://127.0.0.1:8080/
+curl 'http://127.0.0.1:8080/api/check?url=https://example.com'
+```
+
+How the checks are run: [`.claude/skills/verify/SKILL.md`](.claude/skills/verify/SKILL.md).
+
 ## How this repository is worked on
 
 [`CLAUDE.md`](CLAUDE.md), a port of

@@ -32,7 +32,17 @@ skipped.** ⚠ **Write that check early.**
 
 | Layer | What is supported | Which authority, which section | What asserts it |
 |---|---|---|---|
-| — | — | — | — |
+| Input | `http`/`https` only; ports exactly 80/443; userinfo, local-only names, non-canonical numeric hosts and policy-refused IP literals refused, each with its code | `rules/security.md` § 2; RFC 6761 § 6.3, RFC 6762, RFC 8375; WHATWG URL § host parsing | `internal/target` `TestParseRefuses`, `TestParseAccepts` |
+| Policy | Only global unicast outside the IANA special-purpose "not globally reachable" ranges; IPv6 only within 2000::/3; IPv4-mapped unmapped first | RFC 6890 § 2.2.2; IANA special-purpose registries | `internal/policy` `TestAllowed` |
+| DNS | Absolute-name resolution; `dns.not_found` (NXDOMAIN or NODATA), `dns.timeout`, `dns.server_failure`; IPv4 first, deduplicated | `docs/DESIGN.md` § 2 | `internal/diag` `TestDNSOutcomes`, `TestDNSOkIsIncomplete`; final gate `TestDNSOutcomesThroughTheBinary` |
+| DNS | ⚠ **Any non-public address refuses the whole name, and no refused address appears in the result** | `docs/adr/0004` | `internal/diag` `TestRefusedAddressNeverShown`; final gate `TestDNSOutcomesThroughTheBinary` |
+| Input → DNS | ⚠ **A refused URL causes zero DNS queries**, against a control that causes some | `rules/security.md` § 6 | final gate `TestRefusedURLsReachNothing`; `internal/diag` `TestInputRefusalResolvesNothing` |
+| Result | While TCP/TLS/HTTP are not built, a clean DNS result concludes `incomplete`, never `ok`; those steps are `not_implemented` (TLS `not_applicable` for `http`) | `docs/DESIGN.md` § 6 | `internal/diag` `TestDNSOkIsIncomplete`, `TestLiteralAddressSkipsDNS` |
+| Page / API | The page shows the API's conclusion verbatim, the ladder, and the vantage sentence; `/` shows the form and the vantage sentence | `docs/adr/0001`, `0006` | `internal/server` `TestAPIAndPageRenderTheSameResult`, `TestPageWithoutURLShowsFormAndVantage`; final gate `TestPage` |
+| API | `400` for input refusals | `docs/DESIGN.md` § 6 | `internal/server` `TestAPIInputRefusalIs400`; final gate `TestRefusedURLsReachNothing` |
+| Server | ⚠ **Over the concurrency cap: `503 server.busy`, counted, never a DNS outcome** | `rules/security.md` § 4 | `internal/server` `TestBusyIsNotATargetFailure` |
+| Server | ⚠ **Request logs carry the path only; the checked URL never reaches a log** | `rules/security.md` § 5 | `internal/server` `TestLogsCarryNoQueryString` |
+| Source | No self-dialling HTTP/net calls, no `InsecureSkipVerify`, no `require` in `go.mod` | `rules/security.md` § 1, `rules/go.md` | `internal/conformance` `TestNoSelfDialingCalls`, `TestGoModHasNoRequire` |
 
 ## 2. What this deliberately does not implement
 
@@ -43,6 +53,9 @@ they are different things and the difference is stated, not implied.
 |---|---|---|
 | Ports other than 80 and 443 | ⚠ **yes** | [`adr/0002`](adr/0002-only-ports-80-and-443-are-ever-dialed.md) |
 | Connecting to a name that has any non-public address | ⚠ **yes** | [`adr/0004`](adr/0004-a-name-with-any-non-public-address-is-refused-whole.md) |
+| Telling NXDOMAIN from NODATA | ⚠ **not observable with the standard library** (measured, `DESIGN.md` § 2) | Needs our own DNS client: ADR first |
+| Internationalised domain names | ⚠ **not implemented yet** | Punycode needs a module we do not take (`adr/0006`); refused as `input.idn_not_implemented` |
+| TCP, TLS, HTTP, redirects | ⚠ **not implemented yet** | hidetzu/connect-doctor#2, #3, #4, #5 |
 | HTTP/2 | ⚠ **yes, for the MVP** | [`adr/0005`](adr/0005-tcp-tls-and-http-share-one-connection.md). ⚠ **An h2-only server would be misdiagnosed** |
 | A second vantage point | ⚠ **yes** | [`PRODUCT.md`](PRODUCT.md) § 5, § 6 |
 | Everything in [`PRODUCT.md`](PRODUCT.md) § 5 | ⚠ **yes** | Listed there, with reasons |
@@ -55,8 +68,9 @@ built, how many runs, which percentile.
 
 ⚠ **A number without those is deleted, not corrected.**
 
-⚠ **Nothing has been measured yet.** ⚠ **The first row states its conditions here.**
+⚠ **Conditions for the row below**: 2026-10-10, go1.26.2 linux/amd64, pure-Go resolver
+(`PreferGo: true`), one run each, against the developer machine's configured recursive resolver.
 
 | What was measured | Value | When | Under what conditions |
 |---|---|---|---|
-| — | — | — | — |
+| External tier: our DNS step vs `getent ahosts` for `example.com`, `www.cloudflare.com`, `github.com`, `does-not-exist.example.com` | Same address set for all four names; the last `dns.not_found` on both | 2026-10-10 | Above. ⚠ **Four names, one machine, one run — a sanity record, not a claim about resolvers in general** |
