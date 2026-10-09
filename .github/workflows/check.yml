@@ -1,0 +1,43 @@
+# The fast tier and the final gate, on every PR and on main
+# (.claude/skills/verify/SKILL.md § 6).
+#
+# ⚠ The external tier never runs here: it depends on third parties' uptime
+#   (.claude/rules/verification.md). Each run says so in its summary.
+name: check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  fast:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: scripts/verify.sh fast
+
+  final:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: scripts/verify.sh final
+      - name: Say what did not run
+        if: always()
+        run: |
+          {
+            echo "### Tiers this run did not cover"
+            echo "- **external** — never on CI (depends on third parties' uptime). Run \`scripts/verify.sh external\` locally and record the date."
+          } >> "$GITHUB_STEP_SUMMARY"
