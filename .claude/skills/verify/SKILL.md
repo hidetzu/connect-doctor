@@ -62,8 +62,16 @@ dials, so there is nothing to prove there.**
 
 ## 6. What CI runs
 
-⚠ **No CI yet** (hidetzu/connect-doctor#7). ⚠ **Every PR until then says so, and says which tiers
-ran locally.**
+`.github/workflows/check.yml`, on every PR and on pushes to `main`:
+
+| Tier | CI | ⚠ Why |
+|---|---|---|
+| fast | runs | — |
+| final gate | runs | ⚠ **Needs nothing privileged today** (loopback only) |
+| external | ⚠ **never** | ⚠ **Depends on third parties' uptime.** ⚠ **Every run's summary says so** |
+
+⚠ **When the network-namespace harness arrives (hidetzu/connect-doctor#2), whether a hosted runner
+can create the namespace without `sudo` is measured on the runner and recorded here, with the date.**
 
 ## 7. Return
 
