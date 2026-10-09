@@ -79,3 +79,7 @@ How the checks are run: [`.claude/skills/verify/SKILL.md`](.claude/skills/verify
 
 [`CLAUDE.md`](CLAUDE.md), a port of
 [`hidetzu/claude-dev-template`](https://github.com/hidetzu/claude-dev-template).
+
+## License
+
+[MIT](LICENSE).
