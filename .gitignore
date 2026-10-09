@@ -1,0 +1,21 @@
+# Development telemetry (written by .claude/hooks/telemetry.mjs).
+# ⚠ This is the record of how work was handed to the AI, not anything the product emits.
+# ⚠ It never leaves this machine and it never enters git.
+# ⚠ The exact string below is also declared in .claude/telemetry-dir.mjs
+#   (TELEMETRY_IGNORE_LINE). ⚠ If you change one, change the other.
+.claude/telemetry/
+
+# ⚠ Another session's working copy (git worktree). ⚠ It is a full copy of this repository,
+#   so tracking it means `git add -A` sweeps another session's work in.
+.claude/worktrees/
+
+# Local secrets read by .claude/hooks/ask-slack.mjs
+.env
+.envrc
+
+# Build output.
+/bin/
+/connect-doctor
+
+# Owner's scratch notes (the original brief lives here). ⚠ Never published.
+/tmp/
