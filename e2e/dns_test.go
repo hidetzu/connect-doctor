@@ -1,0 +1,201 @@
+//go:build e2e
+
+// Package e2e is the final gate: the real binary, built now, over real HTTP,
+// resolving through a DNS server we run on loopback (.claude/rules/verification.md).
+//
+// ⚠ No policy is widened for this: the binary is the one that ships, and
+// only its resolver is pointed at internal/dnstest (an operator setting).
+package e2e
+
+import (
+	"bufio"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/netip"
+	"net/url"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/hidetzu/connect-doctor/internal/diag"
+	"github.com/hidetzu/connect-doctor/internal/dnstest"
+)
+
+type instance struct {
+	base string
+	dns  *dnstest.Server
+}
+
+// start builds the binary from this tree and runs it against a fresh fake DNS
+// server. ⚠ Building here, every run, is how the gate knows it measures the
+// code just written and not a stale artefact.
+func start(t *testing.T) *instance {
+	t.Helper()
+	dns, err := dnstest.Start(map[string]dnstest.Answer{
+		"ok.test":      {Addrs: []netip.Addr{netip.MustParseAddr("93.184.215.14"), netip.MustParseAddr("2606:4700:4700::1111")}},
+		"private.test": {Addrs: []netip.Addr{netip.MustParseAddr("10.0.0.7")}},
+		"slow.test":    {Drop: true},
+		"broken.test":  {Rcode: dnstest.RcodeServFail},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { dns.Close() })
+
+	bin := filepath.Join(t.TempDir(), "connect-doctor")
+	build := exec.Command("go", "build", "-o", bin, "../cmd/connect-doctor")
+	build.Stderr = os.Stderr
+	if err := build.Run(); err != nil {
+		t.Fatalf("build: %v", err)
+	}
+
+	cmd := exec.Command(bin, "-addr", "127.0.0.1:0", "-dns-server", dns.Addr())
+	stdout, _ := cmd.StdoutPipe()
+	cmd.Stderr = io.Discard
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = cmd.Process.Kill(); _ = cmd.Wait() })
+
+	lines := make(chan string, 1)
+	go func() {
+		sc := bufio.NewScanner(stdout)
+		if sc.Scan() {
+			lines <- sc.Text()
+		}
+	}()
+	select {
+	case line := <-lines:
+		base, ok := strings.CutPrefix(line, "connect-doctor: listening on ")
+		if !ok {
+			t.Fatalf("unexpected first line: %q", line)
+		}
+		return &instance{base: base, dns: dns}
+	case <-time.After(10 * time.Second):
+		t.Fatal("binary did not announce its address")
+	}
+	return nil
+}
+
+func (in *instance) api(t *testing.T, u string) (int, diag.Result, string) {
+	t.Helper()
+	resp, err := http.Get(in.base + "/api/check?url=" + url.QueryEscape(u))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+	var res diag.Result
+	if err := json.Unmarshal(b, &res); err != nil {
+		t.Fatalf("%s: not JSON: %s", u, b)
+	}
+	return resp.StatusCode, res, string(b)
+}
+
+func (in *instance) page(t *testing.T, path string) string {
+	t.Helper()
+	resp, err := http.Get(in.base + path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+	return string(b)
+}
+
+func ladder(res diag.Result) string {
+	var s []string
+	for _, st := range res.Hops[0].Steps {
+		s = append(s, fmt.Sprintf("%s=%s", st.Step, st.Status))
+	}
+	return strings.Join(s, " ")
+}
+
+// AC 5 and AC 6, together: the control reaches the DNS server, the refused
+// URLs do not.
+func TestRefusedURLsReachNothing(t *testing.T) {
+	in := start(t)
+
+	// ⚠ Control first: a permitted URL causes queries for exactly its name.
+	code, res, _ := in.api(t, "https://ok.test/")
+	if code != 200 || res.Conclusion.Status != diag.ConclusionIncomplete || res.ObservedFrom != "server" {
+		t.Fatalf("ok.test: %d %+v", code, res.Conclusion)
+	}
+	if got := ladder(res); got != "dns=ok tcp=not_implemented tls=not_implemented http=not_implemented" {
+		t.Errorf("ok.test ladder: %s", got)
+	}
+	if got := res.Hops[0].Steps[0].Detail.Addresses; strings.Join(got, ",") != "93.184.215.14,2606:4700:4700::1111" {
+		t.Errorf("ok.test addresses: %v", got)
+	}
+	// The pure-Go resolver asks A and AAAA: two queries, one name.
+	if n := in.dns.Queries("ok.test"); n == 0 {
+		t.Fatalf("control: the DNS server saw no query for ok.test — the gate cannot prove anything")
+	}
+	baseline := in.dns.TotalQueries()
+	if baseline != in.dns.Queries("ok.test") {
+		t.Errorf("queries for names other than ok.test: total %d", baseline)
+	}
+
+	for _, u := range []string{
+		"http://127.0.0.1/",
+		"http://[::1]/",
+		"http://169.254.169.254/latest/meta-data/",
+		"http://localhost/",
+		"http://ok.test:8080/",
+		"http://2130706433/",
+		"file:///etc/passwd",
+	} {
+		code, res, _ := in.api(t, u)
+		if code != 400 || res.Conclusion.Status != diag.ConclusionRefused {
+			t.Errorf("%s: %d %+v, want 400 refused", u, code, res.Conclusion)
+		}
+		if got := ladder(res); got != "dns=skipped tcp=skipped tls=skipped http=skipped" {
+			t.Errorf("%s ladder: %s", u, got)
+		}
+	}
+	if n := in.dns.TotalQueries(); n != baseline {
+		t.Errorf("refused URLs caused %d DNS queries, want 0", n-baseline)
+	}
+}
+
+func TestDNSOutcomesThroughTheBinary(t *testing.T) {
+	in := start(t)
+	cases := map[string]struct{ status, code string }{
+		"https://missing.test/": {diag.ConclusionFailed, "dns.not_found"},
+		"https://broken.test/":  {diag.ConclusionFailed, "dns.server_failure"},
+		"https://slow.test/":    {diag.ConclusionFailed, "dns.timeout"},
+		"https://private.test/": {diag.ConclusionRefused, "dns.refused_address"},
+	}
+	for u, want := range cases {
+		code, res, body := in.api(t, u)
+		if code != 200 || res.Conclusion.Status != want.status || res.Conclusion.Code != want.code || res.Conclusion.FailedStep != "dns" {
+			t.Errorf("%s: %d %+v, want %s/%s", u, code, res.Conclusion, want.status, want.code)
+		}
+		if strings.Contains(body, "10.0.0.7") {
+			t.Errorf("%s: response shows the refused address", u)
+		}
+	}
+}
+
+// AC 7.
+func TestPage(t *testing.T) {
+	in := start(t)
+	page := in.page(t, "/")
+	for _, want := range []string{`<form method="get" action="/">`, diag.ObservedFromNote} {
+		if !strings.Contains(page, want) {
+			t.Errorf("/ does not contain %q", want)
+		}
+	}
+	page = in.page(t, "/?url="+url.QueryEscape("https://ok.test/"))
+	_, res, _ := in.api(t, "https://ok.test/")
+	for _, want := range []string{"✅", "🚧", diag.StatusLabel(diag.StatusNotImplemented), res.Conclusion.Summary, diag.ObservedFromNote, " ms</span>"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("/?url= does not contain %q", want)
+		}
+	}
+}
