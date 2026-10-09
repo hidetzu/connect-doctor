@@ -31,6 +31,25 @@ code**. ⚠ **The code is stable and machine-readable; the sentence is for peopl
 | Nothing arrived | `tcp.timeout`, `tls.timeout`, `http.timeout` — ⚠ **"no answer", never "it is down"** |
 | A timer expired | ⚠ **Same as above here: every wait is bounded by a timer, so these two collapse into `*.timeout`** |
 
+### Input refusals (before any step)
+
+⚠ **Nothing is attempted: every step is `skipped`, `conclusion.failed_step` is absent, and `url`
+is not echoed** (the input may carry credentials, T9).
+
+| Code | When |
+|---|---|
+| `input.missing` | Empty |
+| `input.malformed` | Not parseable; no scheme; an IP in a non-canonical spelling (T2); over the length cap |
+| `input.unsupported_scheme` | Not `http` / `https` (T13) |
+| `input.unsupported_port` | Not exactly `80` / `443` (T8) |
+| `input.credentials` | Userinfo present (T9) |
+| `input.local_name` | Single-label, `localhost`, `.local`, `.home.arpa`, `.internal` (T3) |
+| `input.refused_address` | An IP literal the policy refuses (T1) |
+| `input.idn_not_implemented` | ⚠ **Non-ASCII host. Our gap, worded as ours** — punycode needs a module we do not take |
+
+An IP literal the policy permits has no DNS step: DNS is `not_applicable`, with the address in
+its detail.
+
 ## 2. What each layer can actually observe (Go standard library)
 
 ⚠ **"Observable" means: distinguishable from our server with the standard library, without raw
@@ -41,11 +60,20 @@ sockets.** ⚠ **Anything else is not claimed.**
 | Outcome code | Observed as | Conclusion points at |
 |---|---|---|
 | `ok` | One or more A / AAAA addresses | — |
-| `dns.not_found` | `*net.DNSError` with `IsNotFound` (NXDOMAIN) | ⚠ **The name does not exist** — spelling, or the record was never created |
-| `dns.no_address` | ⚠ **Lookup succeeded, zero A/AAAA** (NODATA) | The name exists but has no address record |
+| `dns.not_found` | `*net.DNSError` with `IsNotFound` — ⚠ **NXDOMAIN or NODATA, which the standard library does not tell apart** | ⚠ **The name does not exist, or has no A/AAAA record** — spelling, or the record was never created |
 | `dns.timeout` | `IsTimeout` | ⚠ **No answer from the resolver** — not "the name is wrong" |
 | `dns.server_failure` | Any other `*net.DNSError` (SERVFAIL, refused, …) | The name's DNS is misconfigured or its servers are failing |
 | `dns.refused_address` | ⚠ **Resolved, and at least one address is not public** | ⚠ **Refused by us**. ⚠ **The address itself is never shown** (§ 4, T5) |
+
+⚠ **Measured, 2026-10-10, go1.26.2 linux/amd64, pure-Go resolver against `internal/dnstest`:**
+⚠ **an NXDOMAIN answer and a NOERROR answer with zero records both return `*net.DNSError{Err: "no
+such host", IsNotFound: true}`.** ⚠ **So "the name does not exist" and "the name has no address"
+are one outcome here**, and the wording says both. ⚠ **Telling them apart needs our own DNS
+client — an ADR first (`adr/0006`).**
+
+⚠ **Names are resolved as absolute (`host + "."`).** ⚠ **Otherwise the resolver tries the server's
+own search domains, and `intranet.corp` becomes `intranet.corp.<our-domain>` — a lookup into our
+network chosen by a stranger** (§ 4, T3).
 
 ⚠ **Not observable, so not claimed:** which authoritative server failed, DNSSEC validation
 state, whether the user's own resolver agrees (§ 4 of [`PRODUCT.md`](PRODUCT.md) — vantage).
@@ -226,6 +254,9 @@ once the API ships**; renaming one is a breaking change.
   reworded** without a version bump.
 - ⚠ **A refused address never appears in `detail`** (T5).
 - `duration_ms` is wall time measured on our server, ⚠ **for that step only**.
+- ⚠ **HTTP status of the API**: `400` for `input.*`, `200` for every other result (a failed
+  target is a successful diagnosis), `503` with `{"error": {"code": "server.busy", ...}}` when the
+  concurrency cap is reached — ⚠ **never a `Result`, so "busy" cannot be read as the target failing**.
 
 ## 7. Delivery order
 

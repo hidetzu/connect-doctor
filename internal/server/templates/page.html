@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ConnectDoctor</title>
+<style>
+:root { --fg: #1b1f24; --muted: #59636e; --line: #d1d9e0; --bg: #ffffff; --panel: #f6f8fa; --accent: #0969da; }
+@media (prefers-color-scheme: dark) {
+  :root { --fg: #e6edf3; --muted: #9198a1; --line: #3d444d; --bg: #0d1117; --panel: #151b23; --accent: #4493f8; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.6 system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif; }
+main { max-width: 40rem; margin: 0 auto; padding: 2rem 1rem 4rem; }
+h1 { margin: 0; font-size: 1.5rem; }
+.lede { margin: .25rem 0 1.5rem; color: var(--muted); }
+.vantage { margin: 0 0 .75rem; padding: .5rem .75rem; border-left: 3px solid var(--accent); background: var(--panel); font-size: .9rem; }
+form { display: flex; gap: .5rem; }
+input { flex: 1; min-width: 0; padding: .6rem .75rem; font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }
+button { padding: .6rem 1rem; font: inherit; color: #fff; background: var(--accent); border: 0; border-radius: 6px; cursor: pointer; }
+.ladder { margin: 2rem 0 1rem; border-collapse: collapse; font-size: 1.15rem; }
+.ladder th { padding: .2rem 1.5rem .2rem 0; text-align: left; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.ladder td { padding: .2rem .75rem .2rem 0; }
+.ladder .ms, .muted { color: var(--muted); font-size: .85rem; }
+.conclusion { padding: 1rem; border: 1px solid var(--line); border-radius: 8px; }
+.conclusion h2 { margin: 0 0 .25rem; font-size: 1rem; }
+.conclusion p { margin: 0; }
+.conclusion .muted { margin-top: .5rem; }
+h3 { margin: 2rem 0 .5rem; font-size: 1rem; }
+details { border-top: 1px solid var(--line); padding: .4rem 0; }
+summary { cursor: pointer; }
+dl { display: grid; grid-template-columns: max-content 1fr; gap: .2rem 1rem; margin: .5rem 0 .5rem 1rem; font-size: .9rem; }
+dt { color: var(--muted); }
+dd { margin: 0; overflow-wrap: anywhere; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .9em; }
+a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+<h1>ConnectDoctor</h1>
+<p class="lede">このURLは、なぜ繋がらないのか。DNS → TCP → TLS → HTTP の順に調べて、最初に止まった層を答えます。</p>
+<p class="vantage">{{.Note}}</p>
+<form method="get" action="/">
+  <input name="url" inputmode="url" autocomplete="url" spellcheck="false" placeholder="https://example.com" value="{{.Input}}" aria-label="診断するURL" required>
+  <button type="submit">診断する</button>
+</form>
+{{if .Busy}}<div class="conclusion" style="margin-top:2rem"><p>{{.Busy}}</p></div>{{end}}
+{{with .Result}}
+<table class="ladder" aria-label="各レイヤの結果">
+{{range (index .Hops 0).Steps}}  <tr><th scope="row">{{upper .Step}}</th><td aria-hidden="true">{{mark .Status}}</td><td>{{label .Status}}{{with .DurationMS}} <span class="ms">{{.}} ms</span>{{end}}</td></tr>
+{{end}}</table>
+<div class="conclusion">
+  <h2>結論</h2>
+  <p>{{.Conclusion.Summary}}</p>
+  <p class="muted">{{.ObservedFromNote}}</p>
+</div>
+<h3>詳細</h3>
+{{range .Hops}}{{$url := .URL}}{{range .Steps}}<details>
+  <summary>{{upper .Step}} — {{label .Status}}</summary>
+  <dl>
+    {{if $url}}<dt>URL</dt><dd><code>{{$url}}</code></dd>{{end}}
+    <dt>状態</dt><dd><code>{{.Status}}</code></dd>
+    {{with .Code}}<dt>コード</dt><dd><code>{{.}}</code></dd>{{end}}
+    {{with .Message}}<dt>説明</dt><dd>{{.}}</dd>{{end}}
+    {{with .DurationMS}}<dt>所要時間</dt><dd>{{.}} ms</dd>{{end}}
+    {{with .Detail}}{{with .Addresses}}<dt>アドレス</dt><dd>{{range .}}<code>{{.}}</code> {{end}}</dd>{{end}}{{with .Error}}<dt>エラー</dt><dd><code>{{.}}</code></dd>{{end}}{{end}}
+  </dl>
+</details>
+{{end}}{{end}}
+<p class="muted">同じ結果をJSONで: <code>GET /api/check?url=…</code></p>
+{{end}}
+</main>
+</body>
+</html>
