@@ -20,7 +20,7 @@
 
 import { readFileSync, existsSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { execFileSync } from "node:child_process";
 
 const ROOT = process.env.CLAUDE_PROJECT_DIR
@@ -104,6 +104,94 @@ const CASES = [
         : { ok: true, said: "no count is written into docs/SPEC.md (counts are announced by the runner)" };
     },
   },
+  {
+    name: "ready-for-ai-label-line",
+    // ⚠ Grounds: `.claude/ready-for-ai-label.mjs` declares the label strings, and two tools import
+    //   them. ⚠ `.claude/rules/owner-decisions.md` states when they may be applied — ⚠ and a
+    //   markdown file cannot import anything, so it holds a second copy of the same strings.
+    // ⚠ Two copies of one decision is what `CLAUDE.md` §3 forbids keeping unchecked.
+    run() {
+      const declared = /READY_FOR_AI_LABEL\s*=\s*["'`]([^"'`]+)["'`]/.exec(read(".claude/ready-for-ai-label.mjs"));
+      if (!declared) return { ok: false, said: "ready-for-ai-label.mjs no longer declares READY_FOR_AI_LABEL" };
+      const marker = /APPLIED_BY_AI_LABEL\s*=\s*["'`]([^"'`]+)["'`]/.exec(read(".claude/ready-for-ai-label.mjs"));
+      if (!marker) return { ok: false, said: "ready-for-ai-label.mjs no longer declares APPLIED_BY_AI_LABEL" };
+      const f = ".claude/rules/owner-decisions.md";
+      // ⚠ Strip first, or the check reads the very words written to describe it (`CLAUDE.md` §5).
+      const rule = stripMarkdown(read(f));
+      const missing = [declared[1], marker[1]].filter((l) => !rule.includes(l));
+      return missing.length === 0
+        ? { ok: true, said: `${f} names both labels ready-for-ai-label.mjs declares (${declared[1]}, ${marker[1]})` }
+        : { ok: false, said: `ready-for-ai-label.mjs declares ${missing.map((l) => `"${l}"`).join(", ")}, and ${f} never names ${missing.length > 1 ? "them" : "it"} — the rule would govern a different label than the tool applies` };
+    },
+  },
+  {
+    name: "label-attribution",
+    // ⚠ Grounds: who applied `ready-for-ai` used to be a subtraction, and a subtraction reads like
+    //   ⚠ a measurement. ⚠ It is now read off the timeline, and THAT reading is the part that can
+    //   ⚠ silently go wrong — ⚠ an unmarked application quietly counted as the AI's, or an
+    //   ⚠ application from before the mark existed counted as the owner's.
+    // ⚠ So the judgement is a pure function, and it is run against fixtures rather than against
+    //   ⚠ whatever the repository happens to contain today.
+    // ⚠ This reaches no network: it imports the function and hands it made-up events.
+    async run() {
+      const { attribute } = await import(pathToFileURL(join(ROOT, ".claude/tools/label-eval.mjs")).href);
+      const R = "ready-for-ai";
+      const M = "applied-by-ai";
+      const cases = [
+        {
+          what: "an application with the mark beside it is the AI's",
+          events: [
+            { issue: 1, label: R, at: "2026-02-01T00:00:00Z" },
+            { issue: 1, label: M, at: "2026-02-01T00:00:00Z" },
+          ],
+          expect: { ai: 1, owner: 0, predates: 0 },
+        },
+        {
+          what: "an application with no mark, after the mark existed, is the owner's",
+          events: [
+            { issue: 1, label: R, at: "2026-02-01T00:00:00Z" },
+            { issue: 1, label: M, at: "2026-02-01T00:00:00Z" },
+            { issue: 2, label: R, at: "2026-02-02T00:00:00Z" },
+          ],
+          expect: { ai: 1, owner: 1, predates: 0 },
+        },
+        {
+          what: "an application from before the mark existed is neither",
+          events: [
+            { issue: 9, label: R, at: "2026-01-01T00:00:00Z" },
+            { issue: 1, label: R, at: "2026-02-01T00:00:00Z" },
+            { issue: 1, label: M, at: "2026-02-01T00:00:00Z" },
+          ],
+          expect: { ai: 1, owner: 0, predates: 1 },
+        },
+        {
+          what: "with no mark anywhere, nothing is attributed rather than all of it to the owner",
+          events: [{ issue: 1, label: R, at: "2026-01-01T00:00:00Z" }],
+          expect: { ai: 0, owner: 0, predates: 1 },
+        },
+        {
+          what: "labels that are not these two are ignored",
+          events: [
+            { issue: 1, label: "security", at: "2026-02-01T00:00:00Z" },
+            { issue: 1, label: R, at: "2026-02-01T00:00:00Z" },
+            { issue: 1, label: M, at: "2026-02-01T00:00:00Z" },
+          ],
+          expect: { ai: 1, owner: 0, predates: 0 },
+        },
+      ];
+      const wrong = [];
+      for (const c of cases) {
+        const got = attribute(c.events);
+        const actual = { ai: got.byAi.length, owner: got.byOwner.length, predates: got.predatesTheMark.length };
+        if (JSON.stringify(actual) !== JSON.stringify(c.expect)) {
+          wrong.push(`${c.what} — expected ${JSON.stringify(c.expect)}, got ${JSON.stringify(actual)}`);
+        }
+      }
+      return wrong.length
+        ? { ok: false, said: `${wrong.length} of ${cases.length} attribution cases are wrong:\n      ` + wrong.join("\n      ") }
+        : { ok: true, said: `attribution reads the timeline the way it says it does (${cases.length} fixtures)` };
+    },
+  },
 ];
 
 // ── the runner ─────────────────────────────────────────────────────────────
@@ -132,7 +220,7 @@ console.log(only
 let failed = 0;
 for (const c of chosen) {
   let r;
-  try { r = c.run(); }
+  try { r = await c.run(); }
   catch (e) { r = { ok: false, said: `the case could not run: ${e.message}` }; }
   if (!r.ok) failed++;
   console.log(`  ${r.ok ? "\x1b[32mok\x1b[0m  " : "\x1b[31mFAIL\x1b[0m"} ${c.name} — ${r.said}`);

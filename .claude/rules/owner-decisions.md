@@ -80,6 +80,22 @@ now      AI applies ready-for-ai     ->  ... -> PR                ->  ⚠ human 
 - MUST: ⚠ **Re-run the gate immediately before work starts, every time**, even on an issue the AI
   labelled itself. ⚠ **Bodies and comments change after a label is applied.**
 
+### ⚠ In this project, the step is one command
+
+```text
+node .claude/tools/ready-for-ai.mjs --issue <N> --verdict-file <path>            posts the verdict, applies both labels, records
+node .claude/tools/ready-for-ai.mjs --issue <N> --verdict-file <path> --dry-run  runs every refusal, changes nothing
+node .claude/tools/label-eval.mjs                                                who applied it, read off the timeline
+```
+
+- MUST: ⚠ **It applies `ready-for-ai` together with `applied-by-ai`, the mark that says the AI
+  applied it.** ⚠ **Never apply `applied-by-ai` by hand** — ⚠ **an owner application would then
+  read as the AI's, and nothing could tell afterwards.**
+- MUST: ⚠ **`needs-decision` on an issue makes the tool refuse** (condition 1 below).
+- ⚠ **Ported from hidetzu/kagima** (`.claude/ready-for-ai-label.mjs` says what the mark is and is
+  not). ⚠ **`docs-check.mjs` case `ready-for-ai-label-line` fails if this file stops naming the
+  labels the tool applies.**
+
 ### ⚠ When the AI must not apply it
 
 ⚠ **Any one of these means no label.** ⚠ **Not "probably fine". No label.**
