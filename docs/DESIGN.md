@@ -216,7 +216,10 @@ once the API ships**; renaming one is a breaking change.
 }
 ```
 
-- `conclusion.status` is one of `ok`, `failed`, `refused`.
+- `conclusion.status` is one of `ok`, `failed`, `refused`, `incomplete`.
+  ⚠ **`incomplete` means every step that ran succeeded and at least one step is
+  `not_implemented`.** ⚠ **Never `ok` while a layer was not checked** — ⚠ **"not checked" is not
+  "connected"** ([`evidence.md`](../.claude/rules/evidence.md)).
 - `conclusion.failed_step` is the **first** step, across all hops, whose status is `failed` or
   `refused`; absent on `ok`.
 - ⚠ **`code` is the stable contract for programs. `summary` / `message` are for people and may be
