@@ -1,7 +1,8 @@
 //go:build e2e
 
 // Package e2e is the final gate: the real binary, built now, over real HTTP,
-// resolving through a DNS server we run on loopback (.claude/rules/verification.md).
+// resolving through a DNS server we run on loopback, connecting to listeners
+// inside an empty network namespace (main_test.go).
 //
 // ⚠ No policy is widened for this: the binary is the one that ships, and
 // only its resolver is pointed at internal/dnstest (an operator setting).
@@ -36,11 +37,18 @@ type instance struct {
 // code just written and not a stale artefact.
 func start(t *testing.T) *instance {
 	t.Helper()
+	a := netip.MustParseAddr
 	dns, err := dnstest.Start(map[string]dnstest.Answer{
-		"ok.test":      {Addrs: []netip.Addr{netip.MustParseAddr("93.184.215.14"), netip.MustParseAddr("2606:4700:4700::1111")}},
-		"private.test": {Addrs: []netip.Addr{netip.MustParseAddr("10.0.0.7")}},
-		"slow.test":    {Drop: true},
-		"broken.test":  {Rcode: dnstest.RcodeServFail},
+		"ok.test":       {Addrs: []netip.Addr{a(addrListen), a(addrV6)}},
+		"closed.test":   {Addrs: []netip.Addr{a(addrClosed)}},
+		"drop.test":     {Addrs: []netip.Addr{a(addrDrop)}},
+		"unreach.test":  {Addrs: []netip.Addr{a(addrUnreachable)}},
+		"v6only.test":   {Addrs: []netip.Addr{a(addrV6)}},
+		"fallback.test": {Addrs: []netip.Addr{a(addrDrop), a(addrListen)}},
+		"private.test":  {Addrs: []netip.Addr{a("10.0.0.7")}},
+		"loop.test":     {Addrs: []netip.Addr{a("127.0.0.1")}},
+		"slow.test":     {Drop: true},
+		"broken.test":   {Rcode: dnstest.RcodeServFail},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -126,7 +134,7 @@ func TestRefusedURLsReachNothing(t *testing.T) {
 	if code != 200 || res.Conclusion.Status != diag.ConclusionIncomplete || res.ObservedFrom != "server" {
 		t.Fatalf("ok.test: %d %+v", code, res.Conclusion)
 	}
-	if got := ladder(res); got != "dns=ok tcp=not_implemented tls=not_implemented http=not_implemented" {
+	if got := ladder(res); got != "dns=ok tcp=ok tls=not_implemented http=not_implemented" {
 		t.Errorf("ok.test ladder: %s", got)
 	}
 	if got := res.Hops[0].Steps[0].Detail.Addresses; strings.Join(got, ",") != "93.184.215.14,2606:4700:4700::1111" {
@@ -141,6 +149,7 @@ func TestRefusedURLsReachNothing(t *testing.T) {
 		t.Errorf("queries for names other than ok.test: total %d", baseline)
 	}
 
+	loopBefore := loopbackAccepts.Load()
 	for _, u := range []string{
 		"http://127.0.0.1/",
 		"http://[::1]/",
@@ -161,6 +170,19 @@ func TestRefusedURLsReachNothing(t *testing.T) {
 	if n := in.dns.TotalQueries(); n != baseline {
 		t.Errorf("refused URLs caused %d DNS queries, want 0", n-baseline)
 	}
+	// A name that resolves to loopback is resolved (that is how the address
+	// is learned) and then refused before any dial.
+	if _, res, _ := in.api(t, "https://loop.test/"); res.Conclusion.Code != "dns.refused_address" {
+		t.Errorf("loop.test: %+v, want dns.refused_address", res.Conclusion)
+	}
+	// ⚠ And nothing was dialled: the loopback listeners saw no connection,
+	// while the control above did reach the public listener.
+	if n := loopbackAccepts.Load() - loopBefore; n != 0 {
+		t.Errorf("refused URLs reached the loopback listener %d times, want 0", n)
+	}
+	if publicAccepts.Load() == 0 {
+		t.Error("control: the public listener saw no connection — the gate cannot prove the refusal")
+	}
 }
 
 func TestDNSOutcomesThroughTheBinary(t *testing.T) {
@@ -171,12 +193,13 @@ func TestDNSOutcomesThroughTheBinary(t *testing.T) {
 		"https://slow.test/":    {diag.ConclusionFailed, "dns.timeout"},
 		"https://private.test/": {diag.ConclusionRefused, "dns.refused_address"},
 	}
+	cases["https://loop.test/"] = struct{ status, code string }{diag.ConclusionRefused, "dns.refused_address"}
 	for u, want := range cases {
 		code, res, body := in.api(t, u)
 		if code != 200 || res.Conclusion.Status != want.status || res.Conclusion.Code != want.code || res.Conclusion.FailedStep != "dns" {
 			t.Errorf("%s: %d %+v, want %s/%s", u, code, res.Conclusion, want.status, want.code)
 		}
-		if strings.Contains(body, "10.0.0.7") {
+		if strings.Contains(body, "10.0.0.7") || strings.Contains(body, "127.0.0.1") {
 			t.Errorf("%s: response shows the refused address", u)
 		}
 	}

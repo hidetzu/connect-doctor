@@ -64,7 +64,7 @@ a { color: var(--accent); }
     {{with .Code}}<dt>コード</dt><dd><code>{{.}}</code></dd>{{end}}
     {{with .Message}}<dt>説明</dt><dd>{{.}}</dd>{{end}}
     {{with .DurationMS}}<dt>所要時間</dt><dd>{{.}} ms</dd>{{end}}
-    {{with .Detail}}{{with .Addresses}}<dt>アドレス</dt><dd>{{range .}}<code>{{.}}</code> {{end}}</dd>{{end}}{{with .Error}}<dt>エラー</dt><dd><code>{{.}}</code></dd>{{end}}{{end}}
+    {{with .Detail}}{{with .Addresses}}<dt>アドレス</dt><dd>{{range .}}<code>{{.}}</code> {{end}}</dd>{{end}}{{with .Address}}<dt>接続先</dt><dd><code>{{.}}</code></dd>{{end}}{{with .Attempts}}<dt>試行</dt><dd>{{range .}}<code>{{.Address}}</code> {{.Outcome}} ({{.DurationMS}} ms){{with .Error}} <code>{{.}}</code>{{end}}<br>{{end}}</dd>{{end}}{{with .Error}}<dt>エラー</dt><dd><code>{{.}}</code></dd>{{end}}{{end}}
   </dl>
 </details>
 {{end}}{{end}}

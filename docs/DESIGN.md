@@ -87,9 +87,19 @@ state, whether the user's own resolver agrees (§ 4 of [`PRODUCT.md`](PRODUCT.md
 | `tcp.timeout` | No answer before the deadline — ⚠ **filtered, dropped, or unroutable; these cannot be told apart from here** |
 | `tcp.unreachable` | `EHOSTUNREACH` / `ENETUNREACH` — ⚠ **reported by our own side or a router** |
 | `tcp.no_route_family` | ⚠ **Every permitted address is IPv6 and our server has no IPv6 route** — ⚠ **our gap, not theirs** |
+| `tcp.refused_address` | ⚠ **`internal/dial`'s `Control` hook refused the address at the socket.** Status `refused`. ⚠ **Unreachable while the DNS step and the hook share one policy**; it exists so that, if they ever disagree, the answer is a refusal and never a connection |
+| `tcp.failed` | Any other dial error, ⚠ **with its raw text in the attempt's `error`** (`.claude/rules/go.md`) |
 
 ⚠ **Multiple addresses**: tried in order (IPv4 first), ⚠ **each attempt recorded**. ⚠ **The step is
 `ok` if any attempt connects**, and the detail says which ones did not.
+⚠ **When every attempt fails, the first attempted address's outcome is the step's code**
+(owner decision, hidetzu/connect-doctor#2, 2026-10-10) — except `tcp.no_route_family`, which needs
+every address to be IPv6 and each to have failed for lack of a route on our side.
+
+⚠ **Measured, 2026-10-10, linux, in an unprivileged network namespace: `ENETUNREACH` (101) with no
+IPv6 route; `EHOSTUNREACH` (113) from an `unreachable` route; a route into a dummy interface
+produces silence and so a timeout; a `blackhole` route fails at once with `EINVAL` and is therefore
+not a way to produce `tcp.timeout`.**
 
 ### TLS (`crypto/tls` over the same connection, `https` only)
 

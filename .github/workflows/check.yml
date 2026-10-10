@@ -33,6 +33,21 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      # ⚠ Measured, not assumed (hidetzu/connect-doctor#2): can this runner create
+      #   an unprivileged network namespace? Ubuntu 24.04 may restrict them via
+      #   AppArmor; if so, lift that restriction for this runner only, and say so.
+      - name: Measure unprivileged network namespaces
+        run: |
+          r=$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null || echo absent)
+          if unshare -rn true 2>/dev/null; then
+            msg="unshare -rn works as is (apparmor_restrict_unprivileged_userns=$r)"
+          else
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+            if unshare -rn true; then msg="unshare -rn failed (apparmor_restrict_unprivileged_userns=$r); works after sudo sysctl =0"
+            else msg="unshare -rn fails even after the sysctl"; fi
+          fi
+          echo "userns: $msg"
+          echo "- **network namespace**: $msg" >> "$GITHUB_STEP_SUMMARY"
       - run: scripts/verify.sh final
       - name: Say what did not run
         if: always()

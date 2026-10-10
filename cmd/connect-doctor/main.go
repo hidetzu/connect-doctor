@@ -14,6 +14,7 @@ import (
 	"syscall"
 
 	"github.com/hidetzu/connect-doctor/internal/diag"
+	"github.com/hidetzu/connect-doctor/internal/dial"
 	"github.com/hidetzu/connect-doctor/internal/limits"
 	"github.com/hidetzu/connect-doctor/internal/server"
 )
@@ -48,7 +49,7 @@ func main() {
 	fmt.Printf("connect-doctor: listening on http://%s\n", ln.Addr())
 
 	srv := &http.Server{
-		Handler:           server.New(&diag.Checker{Resolver: resolver}, logger).Handler(),
+		Handler:           server.New(&diag.Checker{Resolver: resolver, Dial: dial.TCP}, logger).Handler(),
 		ReadHeaderTimeout: limits.ServerReadHeader,
 		WriteTimeout:      limits.ServerWrite,
 		ErrorLog:          logger,

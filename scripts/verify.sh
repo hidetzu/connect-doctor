@@ -58,7 +58,20 @@ args=(-count=1 -v)
 [ -n "$tags" ] && args+=(-tags "$tags")
 [ -n "$only" ] && args+=(-run "$only")
 log=$(mktemp); trap 'rm -f "$log"' EXIT
-go test "${args[@]}" $pkgs 2>&1 | tee "$log" | grep -vE '^(=== (RUN|PAUSE|CONT)|\s+--- PASS)'
+
+# ⚠ The final gate makes real TCP connections, so it runs only inside an
+#   empty network namespace with no route out (e2e/main_test.go refuses
+#   anything else). ⚠ If one cannot be created, that is NOT-VERIFIED, not PASS.
+wrap=()
+if [ "$tier" = final ]; then
+  if ! unshare -rn true 2>/dev/null; then
+    echo "verify: NOT-VERIFIED — cannot create an unprivileged network namespace here (unshare -rn failed)"
+    exit 3
+  fi
+  wrap=(unshare -rn)
+  echo "verify: final gate runs inside an empty network namespace (unshare -rn)"
+fi
+"${wrap[@]}" go test "${args[@]}" $pkgs 2>&1 | tee "$log" | grep -vE '^(=== (RUN|PAUSE|CONT)|\s+--- PASS)'
 [ "${PIPESTATUS[0]}" = 0 ] || fail=1
 
 pass=$(grep -cE '^\s*--- PASS' "$log"); fails=$(grep -cE '^\s*--- FAIL' "$log"); skips=$(grep -cE '^\s*--- SKIP' "$log")
