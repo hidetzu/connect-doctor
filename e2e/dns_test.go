@@ -36,7 +36,7 @@ type instance struct {
 // start builds the binary from this tree and runs it against a fresh fake DNS
 // server. ⚠ Building here, every run, is how the gate knows it measures the
 // code just written and not a stale artefact.
-func start(t *testing.T) *instance {
+func start(t *testing.T, extra ...string) *instance {
 	t.Helper()
 	a := netip.MustParseAddr
 	dns, err := dnstest.Start(map[string]dnstest.Answer{
@@ -95,7 +95,7 @@ func start(t *testing.T) *instance {
 	// -trust-xff is the operator setting Cloud Run runs with; it lets each
 	// request below be its own client, so the per-client limits only bite in
 	// the test written for them (ratelimit_test.go). ⚠ The limits stay on.
-	cmd := exec.Command(bin, "-addr", "127.0.0.1:0", "-dns-server", dns.Addr(), "-trust-xff")
+	cmd := exec.Command(bin, append([]string{"-addr", "127.0.0.1:0", "-dns-server", dns.Addr(), "-trust-xff"}, extra...)...)
 	cmd.Env = append(os.Environ(), trustEnv...)
 	stdout, _ := cmd.StdoutPipe()
 	cmd.Stderr = io.Discard
@@ -263,18 +263,18 @@ func TestDNSOutcomesThroughTheBinary(t *testing.T) {
 	}
 }
 
-// AC 7.
+// AC 7, as redesigned by hidetzu/connect-doctor#25.
 func TestPage(t *testing.T) {
 	in := start(t)
 	page := in.page(t, "/")
-	for _, want := range []string{`<form method="get" action="/">`, diag.ObservedFromNote} {
+	for _, want := range []string{`<form method="get" action="/">`, "あなたのPCからの接続結果ではありません", `<div class="strip"`} {
 		if !strings.Contains(page, want) {
 			t.Errorf("/ does not contain %q", want)
 		}
 	}
 	page = in.page(t, "/?url="+url.QueryEscape("https://ok.test/"))
 	_, res, _ := in.api(t, "https://ok.test/")
-	for _, want := range []string{"✅", "ステータス200", res.Conclusion.Summary, diag.ObservedFromNote, " ms</span>"} {
+	for _, want := range []string{`class="verdict ok"`, diag.Headline(res), `<ol class="rail"`, "✓", "あなたのPCからの接続結果ではありません", "ms</span>"} {
 		if !strings.Contains(page, want) {
 			t.Errorf("/?url= does not contain %q", want)
 		}

@@ -22,6 +22,7 @@ import (
 func main() {
 	addr := flag.String("addr", "127.0.0.1:8080", "listen address (port 0 picks a free one); when not given and $PORT is set, 0.0.0.0:$PORT (Cloud Run)")
 	trustXFF := flag.Bool("trust-xff", false, "take the client address from the last X-Forwarded-For entry (only behind a proxy that appends it, e.g. Cloud Run)")
+	vantage := flag.String("vantage", "", `where checks leave from, shown on the page (e.g. "Tokyo, Japan"); must match the deployment`)
 	dnsServer := flag.String("dns-server", "", "resolver to use, host:port (default: the system's resolvers)")
 	flag.Parse()
 	addrGiven := false
@@ -53,7 +54,7 @@ func main() {
 	fmt.Printf("connect-doctor: listening on http://%s\n", ln.Addr())
 
 	srv := &http.Server{
-		Handler:           server.New(&diag.Checker{Resolver: resolver, Dial: dial.TCP}, logger, server.Options{TrustXFF: *trustXFF}).Handler(),
+		Handler:           server.New(&diag.Checker{Resolver: resolver, Dial: dial.TCP}, logger, server.Options{TrustXFF: *trustXFF, Vantage: *vantage}).Handler(),
 		ReadHeaderTimeout: limits.ServerReadHeader,
 		WriteTimeout:      limits.ServerWrite,
 		ErrorLog:          logger,

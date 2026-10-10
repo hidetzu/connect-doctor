@@ -5,59 +5,77 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ConnectDoctor</title>
 <style>
-:root { --fg: #1b1f24; --muted: #59636e; --line: #d1d9e0; --bg: #ffffff; --panel: #f6f8fa; --accent: #0969da; }
+/* hidetzu/connect-doctor#25, candidate A: a headline card, then the four steps in one row.
+   ⚠ Colour encodes STATE (ok / warn / fail / neutral), never a layer. */
+:root { --fg:#1b1f24; --muted:#59636e; --faint:#c8d1da; --line:#d1d9e0; --bg:#fff; --panel:#f6f8fa; --accent:#0969da;
+  --ok:#1a7f37; --ok-bg:#dafbe1; --warn:#9a6700; --warn-bg:#fff8c5; --fail:#cf222e; --fail-bg:#ffebe9; --neutral:#59636e; --neutral-bg:#eff2f5;
+  --mono:ui-monospace,SFMono-Regular,Menlo,monospace; }
 @media (prefers-color-scheme: dark) {
-  :root { --fg: #e6edf3; --muted: #9198a1; --line: #3d444d; --bg: #0d1117; --panel: #151b23; --accent: #4493f8; }
+  :root { --fg:#e6edf3; --muted:#9198a1; --faint:#3d444d; --line:#3d444d; --bg:#0d1117; --panel:#151b23; --accent:#4493f8;
+    --ok:#3fb950; --ok-bg:#12261e; --warn:#d29922; --warn-bg:#272115; --fail:#f85149; --fail-bg:#2d1517; --neutral:#9198a1; --neutral-bg:#1c2128; color-scheme:dark; }
 }
-* { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.6 system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif; }
-main { max-width: 40rem; margin: 0 auto; padding: 2rem 1rem 4rem; }
-h1 { margin: 0; font-size: 1.5rem; }
-.lede { margin: .25rem 0 1.5rem; color: var(--muted); }
-.vantage { margin: 0 0 .75rem; padding: .5rem .75rem; border-left: 3px solid var(--accent); background: var(--panel); font-size: .9rem; }
-form { display: flex; gap: .5rem; }
-input { flex: 1; min-width: 0; padding: .6rem .75rem; font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }
-button { padding: .6rem 1rem; font: inherit; color: #fff; background: var(--accent); border: 0; border-radius: 6px; cursor: pointer; }
-.hop { margin: 1.5rem 0 0; font-size: .9rem; overflow-wrap: anywhere; }
-.ladder { margin: 1rem 0 1rem; border-collapse: collapse; font-size: 1.15rem; }
-.ladder th { padding: .2rem 1.5rem .2rem 0; text-align: left; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-.ladder td { padding: .2rem .75rem .2rem 0; }
-.ladder .ms, .muted { color: var(--muted); font-size: .85rem; }
-.conclusion { padding: 1rem; border: 1px solid var(--line); border-radius: 8px; }
-.conclusion h2 { margin: 0 0 .25rem; font-size: 1rem; }
-.conclusion p { margin: 0; }
-.conclusion .muted { margin-top: .5rem; }
-h3 { margin: 2rem 0 .5rem; font-size: 1rem; }
-details { border-top: 1px solid var(--line); padding: .4rem 0; }
-summary { cursor: pointer; }
-dl { display: grid; grid-template-columns: max-content 1fr; gap: .2rem 1rem; margin: .5rem 0 .5rem 1rem; font-size: .9rem; }
-dt { color: var(--muted); }
-dd { margin: 0; overflow-wrap: anywhere; }
-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .9em; }
-a { color: var(--accent); }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.6 system-ui,-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif; }
+main { max-width:40rem; margin:0 auto; padding:1.25rem 1rem 3rem; }
+a { color:var(--accent); }
+code { font-family:var(--mono); font-size:.9em; }
+.top { display:flex; flex-wrap:wrap; gap:.5rem 1rem; align-items:center; justify-content:space-between; margin-bottom:1rem; }
+.brand { font-weight:700; font-size:1.15rem; letter-spacing:.01em; }
+.chip { display:inline-flex; flex-direction:column; padding:.3rem .65rem; border:1px solid var(--line); border-radius:999px; font-size:.78rem; line-height:1.3; background:var(--panel); }
+.chip b { font-weight:600; } .chip b::before { content:"◉ "; color:var(--accent); } .chip small { color:var(--muted); }
+form { display:flex; gap:.5rem; }
+input { flex:1; min-width:0; padding:.6rem .75rem; font:inherit; color:inherit; background:var(--bg); border:1px solid var(--line); border-radius:6px; }
+button { padding:.6rem 1rem; font:inherit; color:#fff; background:var(--accent); border:0; border-radius:6px; cursor:pointer; }
+.strip { display:flex; align-items:center; gap:.4rem; margin:.6rem 0 0; color:var(--muted); font:500 .72rem var(--mono); letter-spacing:.04em; }
+.strip i { flex:1; height:1px; background:var(--faint); } .strip span::before { content:"●"; margin-right:.25rem; color:var(--faint); }
+.verdict { margin:1.5rem 0 .6rem; padding:1rem 1.1rem; border-radius:10px; border:1px solid var(--line); background:var(--neutral-bg); }
+.verdict .h { margin:0; font-size:1.3rem; font-weight:700; text-wrap:balance; } .verdict .c { margin:.25rem 0 0; }
+.verdict .h::before { margin-right:.4rem; content:"⊘"; }
+.verdict.ok { border-color:var(--ok); background:var(--ok-bg); } .verdict.ok .h { color:var(--ok); } .verdict.ok .h::before { content:"✓"; }
+.verdict.warn { border-color:var(--warn); background:var(--warn-bg); } .verdict.warn .h { color:var(--warn); } .verdict.warn .h::before { content:"!"; }
+.verdict.fail { border-color:var(--fail); background:var(--fail-bg); } .verdict.fail .h { color:var(--fail); } .verdict.fail .h::before { content:"✕"; }
+.age { margin:0 0 .4rem; font-size:.8rem; color:var(--muted); }
+.hop { margin:1.1rem 0 .4rem; font-size:.8rem; color:var(--muted); overflow-wrap:anywhere; } .hop code { color:var(--fg); }
+.rail { --nd:1.9rem; --ny:2.55rem; list-style:none; margin:.4rem 0 0; padding:0; display:grid; grid-template-columns:repeat(4,1fr); }
+.rail li { position:relative; text-align:center; }
+.rail li + li::before { content:""; position:absolute; top:var(--ny); left:-50%; width:100%; height:2px; background:var(--faint); }
+.rail li.ok + li.ok::before { background:var(--ok); }
+.rail .name { display:block; font:600 .75rem var(--mono); color:var(--muted); letter-spacing:.05em; }
+.rail .node { position:relative; z-index:1; display:inline-grid; place-items:center; width:var(--nd); height:var(--nd); border-radius:50%; background:var(--bg); border:2px solid var(--faint); color:var(--muted); font-weight:700; }
+.rail li.ok .node { border-color:var(--ok); color:var(--ok); background:var(--ok-bg); }
+.rail li.warn .node { border-color:var(--warn); color:var(--warn); background:var(--warn-bg); }
+.rail li.failed .node { border-color:var(--fail); color:#fff; background:var(--fail); }
+.rail li.refused .node { border-color:var(--neutral); color:var(--neutral); background:var(--neutral-bg); }
+.rail .ms { display:block; font:.72rem var(--mono); color:var(--muted); min-height:1.1em; }
+.busy { margin-top:1.5rem; padding:1rem 1.1rem; border:1px solid var(--line); border-radius:10px; background:var(--neutral-bg); }
+h3 { margin:1.6rem 0 .3rem; font-size:.9rem; color:var(--muted); font-weight:600; }
+details { border-top:1px solid var(--line); padding:.35rem 0; font-size:.88rem; } summary { cursor:pointer; }
+dl { display:grid; grid-template-columns:max-content 1fr; gap:.15rem .9rem; margin:.4rem 0 .4rem .9rem; }
+dt { color:var(--muted); } dd { margin:0; overflow-wrap:anywhere; min-width:0; }
+.muted { color:var(--muted); font-size:.85rem; }
 </style>
 </head>
 <body>
 <main>
-<h1>ConnectDoctor</h1>
-<p class="lede">このURLは、なぜ繋がらないのか。DNS → TCP → TLS → HTTP の順に調べて、最初に止まった層を答えます。</p>
-<p class="vantage">{{.Note}}</p>
+<header class="top">
+  <span class="brand">ConnectDoctor</span>
+  <span class="chip"><b>{{if .Vantage}}{{.Vantage}} から観測{{else}}ConnectDoctorのサーバから観測{{end}}</b><small>あなたのPCからの接続結果ではありません</small></span>
+</header>
 <form method="get" action="/">
   <input name="url" inputmode="url" autocomplete="url" spellcheck="false" placeholder="https://example.com" value="{{.Input}}" aria-label="診断するURL" required>
   <button type="submit">診断する</button>
 </form>
-{{if .Busy}}<div class="conclusion" style="margin-top:2rem"><p>{{.Busy}}</p></div>{{end}}
+<div class="strip" aria-hidden="true"><span>DNS</span><i></i><span>TCP</span><i></i><span>TLS</span><i></i><span>HTTP</span></div>
+{{if .Busy}}<div class="busy"><p>{{.Busy}}</p></div>{{end}}
 {{with .Result}}
-{{$many := gt (len .Hops) 1}}{{range $i, $h := .Hops}}{{if $many}}<p class="hop">{{inc $i}}. {{if $h.URL}}<code>{{$h.URL}}</code>{{else}}<span class="muted">（表示しないURL）</span>{{end}}{{with $h.Code}} <span class="muted">— {{message .}}</span>{{end}}</p>{{end}}
-<table class="ladder" aria-label="各レイヤの結果{{if $many}}（{{inc $i}}番目のURL）{{end}}">
-{{range $h.Steps}}  <tr><th scope="row">{{upper .Step}}</th><td aria-hidden="true">{{mark .Status}}</td><td>{{label .Status}}{{with .DurationMS}} <span class="ms">{{.}} ms</span>{{end}}{{if and (eq .Step "http") .Detail}}{{with .Detail.StatusCode}} <span class="ms">ステータス {{.}}</span>{{end}}{{end}}</td></tr>
-{{end}}</table>
-{{end}}<div class="conclusion">
-  {{if .Cached}}<p class="muted">{{$.Age}}秒前の診断結果です。<a href="/?url={{$.Input | urlquery}}&amp;fresh=1">再診断</a></p>{{end}}
-  <h2>結論</h2>
-  <p>{{.Conclusion.Summary}}</p>
-  <p class="muted">{{.ObservedFromNote}}</p>
-</div>
+<section class="verdict {{state .}}">
+  {{if .Cached}}<p class="age">{{$.Age}}秒前の診断結果です。<a href="/?url={{$.Input | urlquery}}&amp;fresh=1">再診断</a></p>{{end}}
+  <p class="h">{{headline .}}</p>
+  <p class="c">{{cause .}}</p>
+</section>
+{{$many := gt (len .Hops) 1}}{{range $i, $h := .Hops}}{{if $many}}<p class="hop">{{inc $i}}. {{if $h.URL}}<code>{{$h.URL}}</code>{{else}}（表示しないURL）{{end}}{{range $h.Steps}}{{if and (eq .Step "http") .Detail}}{{with .Detail.StatusCode}} → {{.}}{{end}}{{end}}{{end}}{{with $h.Code}} — {{message .}}{{end}}</p>{{end}}
+<ol class="rail" aria-label="各レイヤの結果{{if $many}}（{{inc $i}}番目のURL）{{end}}">{{range $h.Steps}}<li class="{{stepclass .}}"><span class="name">{{upper .Step}}</span><span class="node" aria-label="{{label .Status}}">{{glyph .Status}}</span><span class="ms">{{with .DurationMS}}{{.}}ms{{end}}</span></li>{{end}}</ol>
+{{end}}
 <h3>詳細</h3>
 {{range .Hops}}{{$url := .URL}}{{range .Steps}}<details>
   <summary>{{upper .Step}} — {{label .Status}}</summary>

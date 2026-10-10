@@ -34,6 +34,7 @@ type Server struct {
 	busy     atomic.Int64 // requests answered "busy"; counted, never shown to users
 	limiter  *ratelimit.Limiter
 	trustXFF bool
+	vantage  string
 	cache    *resultCache // nil: no cache (unit tests of other behaviour only)
 }
 
@@ -43,6 +44,10 @@ type Options struct {
 	// ⚠ Only behind a proxy that appends it (Cloud Run does, docs/adr/0008);
 	// anywhere else a client could pick its own key. Off: the TCP peer.
 	TrustXFF bool
+	// Vantage names where the checks leave from, for the page's chip
+	// (e.g. "Tokyo, Japan"). ⚠ Set by the operator to match the deployment
+	// (docs/DEPLOY.md); empty names no place.
+	Vantage string
 }
 
 // New returns a Server with the per-client limits on (hidetzu/connect-doctor#6).
@@ -57,16 +62,21 @@ func New(c *diag.Checker, logger *log.Logger, opts Options) *Server {
 	s.limiter = ratelimit.New(nil)
 	s.cache = newResultCache(nil)
 	s.trustXFF = opts.TrustXFF
+	s.vantage = opts.Vantage
 	return s
 }
 
 func newWithSlots(c *diag.Checker, logger *log.Logger, slots int) *Server {
 	page := template.Must(template.New("page.html").Funcs(template.FuncMap{
-		"mark":    mark,
-		"label":   diag.StatusLabel,
-		"upper":   strings.ToUpper,
-		"inc":     func(i int) int { return i + 1 },
-		"message": diag.Message,
+		"glyph":     glyph,
+		"stepclass": stepClass,
+		"label":     diag.StatusLabel,
+		"upper":     strings.ToUpper,
+		"inc":       func(i int) int { return i + 1 },
+		"message":   diag.Message,
+		"state":     diag.State,
+		"headline":  diag.Headline,
+		"cause":     diag.Cause,
 	}).ParseFS(templates, "templates/page.html"))
 	return &Server{checker: c, log: logger, page: page, slots: make(chan struct{}, slots)}
 }
@@ -147,11 +157,12 @@ func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 }
 
 type pageData struct {
-	Note   string
-	Input  string
-	Result *diag.Result
-	Busy   string
-	Age    int // seconds since a cached result was checked
+	Note    string
+	Input   string
+	Result  *diag.Result
+	Busy    string
+	Age     int // seconds since a cached result was checked
+	Vantage string
 }
 
 func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
@@ -160,7 +171,7 @@ func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
 	// The page runs no script and loads nothing from elsewhere.
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
 
-	d := pageData{Note: diag.ObservedFromNote}
+	d := pageData{Note: diag.ObservedFromNote, Vantage: s.vantage}
 	if _, asked := r.URL.Query()["url"]; asked {
 		d.Input = r.URL.Query().Get("url")
 		dec, ok := s.admit(w, r, d.Input)
@@ -281,18 +292,27 @@ func refusalStatus(d ratelimit.Decision) int {
 	return http.StatusTooManyRequests
 }
 
-func mark(st diag.Status) string {
+// glyph is the mark inside a step's node.
+func glyph(st diag.Status) string {
 	switch st {
 	case diag.StatusOK:
-		return "✅"
+		return "✓"
 	case diag.StatusFailed:
-		return "❌"
+		return "✕"
 	case diag.StatusRefused:
-		return "⛔"
-	case diag.StatusNotImplemented:
-		return "🚧"
+		return "⊘"
 	}
 	return "—"
+}
+
+// stepClass is a step's CSS class: its status, plus "warn" for an HTTP 4xx/5xx.
+// ⚠ Never the step's name: colour encodes state, not layer (hidetzu/connect-doctor#25).
+func stepClass(st diag.Step) string {
+	c := string(st.Status)
+	if st.Step == diag.StepHTTP && st.Detail != nil && st.Detail.StatusCode >= 400 {
+		c += " warn"
+	}
+	return c
 }
 
 type statusWriter struct {

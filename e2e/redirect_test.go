@@ -85,7 +85,7 @@ func TestRedirectChainRespectsTheCeiling(t *testing.T) {
 func TestPageShowsEveryHop(t *testing.T) {
 	in := start(t)
 	page := in.page(t, "/?url=https://redir.test/")
-	if strings.Count(page, `<table class="ladder"`) != 2 || !strings.Contains(page, "1. <code>https://redir.test/</code>") || !strings.Contains(page, "2. <code>https://ok.test/landed</code>") {
+	if strings.Count(page, `<ol class="rail"`) != 2 || !strings.Contains(page, "1. <code>https://redir.test/</code>") || !strings.Contains(page, "2. <code>https://ok.test/landed</code>") {
 		t.Error("the page does not show one labelled ladder per hop")
 	}
 }
