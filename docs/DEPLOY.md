@@ -48,11 +48,12 @@ docker push $IMAGE
 #   (adr/0008); the per-client limits key on it. ⚠ Never set it where no such proxy sits in front.
 # ⚠ -vantage names where checks leave from on the page's chip; ⚠ keep it equal to $REGION.
 #   (^@^ makes @ the separator, because the value contains a comma.)
+# ⚠ -public-url makes og:url / og:image absolute; ⚠ keep it equal to the custom domain (adr/0009).
 # ⚠ --allow-unauthenticated makes it public. That is the product.
 gcloud run deploy connect-doctor --image $IMAGE --region $REGION --project $PROJECT \
   --service-account $SA@$PROJECT.iam.gserviceaccount.com \
   --max-instances 1 --concurrency 8 --cpu 1 --memory 512Mi --timeout 60 \
-  --args='^@^-trust-xff@-vantage=Tokyo, Japan' \
+  --args='^@^-trust-xff@-vantage=Tokyo, Japan@-public-url=https://connect-doctor.hidetzu.work' \
   --allow-unauthenticated
 ```
 
