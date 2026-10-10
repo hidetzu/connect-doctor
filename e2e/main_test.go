@@ -3,6 +3,7 @@
 package e2e
 
 import (
+	"crypto/tls"
 	"fmt"
 	"net"
 	"os"
@@ -11,6 +12,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/hidetzu/connect-doctor/internal/tlstest"
 )
 
 // Addresses the harness gives meaning to, inside the namespace. ⚠ They are
@@ -23,7 +26,18 @@ const (
 	addrDrop        = "8.8.4.4"              // routed into a dummy interface -> silence
 	addrUnreachable = "9.9.9.9"              // unreachable route -> EHOSTUNREACH
 	addrV6          = "2606:4700:4700::1111" // no IPv6 route at all -> ENETUNREACH
+
+	// TLS on :443, one address per certificate problem.
+	addrExpired   = "93.184.215.21" // expired certificate
+	addrUntrusted = "93.184.215.22" // issued by a CA nobody trusts
+	addrMismatch  = "93.184.215.23" // valid, for another name
+	addrPlain     = "93.184.215.24" // plain HTTP on 443
+	addrSilent    = "93.184.215.25" // accepts, never speaks
 )
+
+// trustEnv makes the binary under test trust the test CA and nothing else,
+// through the system root store (internal/tlstest). ⚠ No product flag.
+var trustEnv []string
 
 var (
 	publicAccepts   atomic.Int32 // connections accepted on addrListen
@@ -73,6 +87,11 @@ func setup() error {
 		{"link", "set", "lo", "up"},
 		{"addr", "add", addrListen + "/32", "dev", "lo"},
 		{"addr", "add", addrClosed + "/32", "dev", "lo"},
+		{"addr", "add", addrExpired + "/32", "dev", "lo"},
+		{"addr", "add", addrUntrusted + "/32", "dev", "lo"},
+		{"addr", "add", addrMismatch + "/32", "dev", "lo"},
+		{"addr", "add", addrPlain + "/32", "dev", "lo"},
+		{"addr", "add", addrSilent + "/32", "dev", "lo"},
 		{"link", "add", "d0", "type", "dummy"},
 		{"link", "set", "d0", "up"},
 		{"route", "add", addrDrop + "/32", "dev", "d0"},
@@ -82,22 +101,54 @@ func setup() error {
 			return err
 		}
 	}
-	for _, a := range []string{addrListen + ":80", addrListen + ":443"} {
-		if err := listen(a, &publicAccepts); err != nil {
+	ca, err := tlstest.NewCA("ConnectDoctor e2e CA")
+	if err != nil {
+		return err
+	}
+	stranger, err := tlstest.NewCA("a CA nobody trusts")
+	if err != nil {
+		return err
+	}
+	dir, err := os.MkdirTemp("", "e2e-roots-")
+	if err != nil {
+		return err
+	}
+	if trustEnv, err = tlstest.TrustOnly(ca, dir); err != nil {
+		return err
+	}
+	now := time.Now()
+	good, _ := ca.Valid("ok.test", "fallback.test", addrListen)
+	expired, _ := ca.Leaf([]string{"expired.test"}, now.Add(-48*time.Hour), now.Add(-24*time.Hour))
+	untrusted, _ := stranger.Valid("untrusted.test")
+	mismatch, _ := ca.Valid("other.test")
+
+	if err := listen(addrListen+":80", &publicAccepts, nil); err != nil {
+		return err
+	}
+	for addr, cert := range map[string]*tls.Certificate{
+		addrListen: &good, addrExpired: &expired, addrUntrusted: &untrusted, addrMismatch: &mismatch,
+	} {
+		if err := listen(addr+":443", &publicAccepts, cert); err != nil {
 			return err
 		}
 	}
+	if err := listenRaw(addrPlain+":443", []byte("HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n")); err != nil {
+		return err
+	}
+	if err := listenRaw(addrSilent+":443", nil); err != nil {
+		return err
+	}
 	for _, a := range []string{"127.0.0.1:80", "127.0.0.1:443"} {
-		if err := listen(a, &loopbackAccepts); err != nil {
+		if err := listen(a, &loopbackAccepts, nil); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// listen accepts and counts connections, holding each briefly so the
-// handshake is complete before it closes.
-func listen(addr string, n *atomic.Int32) error {
+// listen accepts and counts connections; with cert, it then completes a TLS
+// handshake. Each connection is held briefly so the client sees it complete.
+func listen(addr string, n *atomic.Int32, cert *tls.Certificate) error {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err
@@ -109,7 +160,47 @@ func listen(addr string, n *atomic.Int32) error {
 				return
 			}
 			n.Add(1)
-			go func() { time.Sleep(200 * time.Millisecond); c.Close() }()
+			go func() {
+				defer c.Close()
+				if cert != nil {
+					s := tls.Server(c, &tls.Config{Certificates: []tls.Certificate{*cert}, NextProtos: []string{"http/1.1"}})
+					_ = s.SetDeadline(time.Now().Add(10 * time.Second))
+					if s.Handshake() == nil {
+						buf := make([]byte, 1)
+						_, _ = s.Read(buf)
+					}
+					return
+				}
+				time.Sleep(200 * time.Millisecond)
+			}()
+		}
+	}()
+	return nil
+}
+
+// listenRaw answers whatever arrives with raw (or, for nil, with silence
+// until the client gives up).
+func listenRaw(addr string, raw []byte) error {
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return err
+	}
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				defer c.Close()
+				_ = c.SetDeadline(time.Now().Add(15 * time.Second))
+				buf := make([]byte, 4096)
+				_, _ = c.Read(buf)
+				if raw != nil {
+					_, _ = c.Write(raw)
+				}
+				_, _ = c.Read(buf)
+			}()
 		}
 	}()
 	return nil

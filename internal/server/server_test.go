@@ -57,7 +57,7 @@ func TestAPIAndPageRenderTheSameResult(t *testing.T) {
 	s := newTestServer(staticResolver{[]netip.Addr{netip.MustParseAddr("93.184.215.14")}}, io.Discard, 4)
 	h := s.Handler()
 
-	resp, body := get(t, h, "/api/check?url="+url.QueryEscape("https://ok.test/"))
+	resp, body := get(t, h, "/api/check?url="+url.QueryEscape("http://ok.test/"))
 	if resp.StatusCode != 200 || !strings.HasPrefix(resp.Header.Get("Content-Type"), "application/json") {
 		t.Fatalf("api: %d %s", resp.StatusCode, resp.Header.Get("Content-Type"))
 	}
@@ -69,7 +69,7 @@ func TestAPIAndPageRenderTheSameResult(t *testing.T) {
 		t.Fatalf("api result: %+v", res)
 	}
 
-	resp, page := get(t, h, "/?url="+url.QueryEscape("https://ok.test/"))
+	resp, page := get(t, h, "/?url="+url.QueryEscape("http://ok.test/"))
 	if resp.StatusCode != 200 {
 		t.Fatalf("page: %d", resp.StatusCode)
 	}
@@ -117,18 +117,18 @@ func TestBusyIsNotATargetFailure(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		get(t, h, "/api/check?url=https://ok.test/")
+		get(t, h, "/api/check?url=http://ok.test/")
 	}()
 	<-r.entered // the only slot is now held
 
-	resp, body := get(t, h, "/api/check?url=https://ok.test/")
+	resp, body := get(t, h, "/api/check?url=http://ok.test/")
 	if resp.StatusCode != http.StatusServiceUnavailable || !strings.Contains(body, `"server.busy"`) {
 		t.Errorf("api over the bound: %d %s", resp.StatusCode, body)
 	}
 	if strings.Contains(body, "dns.") {
 		t.Errorf("busy answered as a DNS outcome: %s", body)
 	}
-	resp, page := get(t, h, "/?url=https://ok.test/")
+	resp, page := get(t, h, "/?url=http://ok.test/")
 	if resp.StatusCode != http.StatusServiceUnavailable || !strings.Contains(page, diag.Message("server.busy")) {
 		t.Errorf("page over the bound: %d", resp.StatusCode)
 	}
@@ -144,8 +144,8 @@ func TestLogsCarryNoQueryString(t *testing.T) {
 	var logs bytes.Buffer
 	h := newTestServer(staticResolver{[]netip.Addr{netip.MustParseAddr("93.184.215.14")}}, &logs, 1).Handler()
 	secret := "SECRET123"
-	get(t, h, "/api/check?url="+url.QueryEscape("https://x.test/?token="+secret))
-	get(t, h, "/?url="+url.QueryEscape("https://x.test/?token="+secret))
+	get(t, h, "/api/check?url="+url.QueryEscape("http://x.test/?token="+secret))
+	get(t, h, "/?url="+url.QueryEscape("http://x.test/?token="+secret))
 	if strings.Contains(logs.String(), secret) || strings.Contains(logs.String(), "x.test") {
 		t.Errorf("log leaks the checked URL:\n%s", logs.String())
 	}

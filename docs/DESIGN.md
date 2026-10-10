@@ -113,7 +113,17 @@ not a way to produce `tcp.timeout`.**
 | `tls.timeout` | No handshake before the deadline |
 | `tls.not_tls` | ⚠ **Bytes came back that are not TLS** — typically plain HTTP on 443 |
 
-⚠ **Detail shows**: negotiated version, cipher suite, ALPN, leaf subject / SANs / issuer / validity.
+⚠ **An error that matches none of these is `tls.handshake_failed` with its raw text in
+`detail.error`** (`.claude/rules/go.md`) — e.g. a certificate not authorised to sign.
+⚠ **`tls.cert_expired` also covers "not yet valid"**: `crypto/x509` reports both as `Expired`;
+the dates in detail say which.
+
+⚠ **Trust is the system root store, and nothing else.** ⚠ **There is no way to tell the step to
+trust another CA, and no `InsecureSkipVerify`.** ⚠ **Tests give trust the way a deployment does:
+`SSL_CERT_FILE` / `SSL_CERT_DIR` (read in go1.26.2 `crypto/x509` `loadSystemRoots`).**
+
+⚠ **Detail shows**: negotiated version, cipher suite, ALPN, leaf subject / SANs / issuer / validity. ⚠ **For a certificate that failed verification, the leaf is still shown**
+(`tls.CertificateVerificationError.UnverifiedCertificates`) — the expiry date is the useful part.
 ⚠ **Not graded.** ⚠ **Not scored** (`PRODUCT.md` § 5).
 
 ### HTTP (`net/http` request written on the same connection)

@@ -39,16 +39,21 @@ func start(t *testing.T) *instance {
 	t.Helper()
 	a := netip.MustParseAddr
 	dns, err := dnstest.Start(map[string]dnstest.Answer{
-		"ok.test":       {Addrs: []netip.Addr{a(addrListen), a(addrV6)}},
-		"closed.test":   {Addrs: []netip.Addr{a(addrClosed)}},
-		"drop.test":     {Addrs: []netip.Addr{a(addrDrop)}},
-		"unreach.test":  {Addrs: []netip.Addr{a(addrUnreachable)}},
-		"v6only.test":   {Addrs: []netip.Addr{a(addrV6)}},
-		"fallback.test": {Addrs: []netip.Addr{a(addrDrop), a(addrListen)}},
-		"private.test":  {Addrs: []netip.Addr{a("10.0.0.7")}},
-		"loop.test":     {Addrs: []netip.Addr{a("127.0.0.1")}},
-		"slow.test":     {Drop: true},
-		"broken.test":   {Rcode: dnstest.RcodeServFail},
+		"ok.test":        {Addrs: []netip.Addr{a(addrListen), a(addrV6)}},
+		"closed.test":    {Addrs: []netip.Addr{a(addrClosed)}},
+		"drop.test":      {Addrs: []netip.Addr{a(addrDrop)}},
+		"unreach.test":   {Addrs: []netip.Addr{a(addrUnreachable)}},
+		"v6only.test":    {Addrs: []netip.Addr{a(addrV6)}},
+		"fallback.test":  {Addrs: []netip.Addr{a(addrDrop), a(addrListen)}},
+		"expired.test":   {Addrs: []netip.Addr{a(addrExpired)}},
+		"untrusted.test": {Addrs: []netip.Addr{a(addrUntrusted)}},
+		"mismatch.test":  {Addrs: []netip.Addr{a(addrMismatch)}},
+		"plain.test":     {Addrs: []netip.Addr{a(addrPlain)}},
+		"silent.test":    {Addrs: []netip.Addr{a(addrSilent)}},
+		"private.test":   {Addrs: []netip.Addr{a("10.0.0.7")}},
+		"loop.test":      {Addrs: []netip.Addr{a("127.0.0.1")}},
+		"slow.test":      {Drop: true},
+		"broken.test":    {Rcode: dnstest.RcodeServFail},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -63,6 +68,7 @@ func start(t *testing.T) *instance {
 	}
 
 	cmd := exec.Command(bin, "-addr", "127.0.0.1:0", "-dns-server", dns.Addr())
+	cmd.Env = append(os.Environ(), trustEnv...)
 	stdout, _ := cmd.StdoutPipe()
 	cmd.Stderr = io.Discard
 	if err := cmd.Start(); err != nil {
@@ -134,7 +140,7 @@ func TestRefusedURLsReachNothing(t *testing.T) {
 	if code != 200 || res.Conclusion.Status != diag.ConclusionIncomplete || res.ObservedFrom != "server" {
 		t.Fatalf("ok.test: %d %+v", code, res.Conclusion)
 	}
-	if got := ladder(res); got != "dns=ok tcp=ok tls=not_implemented http=not_implemented" {
+	if got := ladder(res); got != "dns=ok tcp=ok tls=ok http=not_implemented" {
 		t.Errorf("ok.test ladder: %s", got)
 	}
 	if got := res.Hops[0].Steps[0].Detail.Addresses; strings.Join(got, ",") != "93.184.215.14,2606:4700:4700::1111" {

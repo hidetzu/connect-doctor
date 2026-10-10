@@ -16,9 +16,10 @@ func TestTCPOutcomesThroughTheBinary(t *testing.T) {
 	cases := []struct {
 		url, ladder, code string
 	}{
-		{"https://ok.test/", "dns=ok tcp=ok tls=not_implemented http=not_implemented", ""},
+		{"https://ok.test/", "dns=ok tcp=ok tls=ok http=not_implemented", ""},
 		{"http://ok.test/", "dns=ok tcp=ok tls=not_applicable http=not_implemented", ""},
 		{"https://closed.test/", "dns=ok tcp=failed tls=skipped http=skipped", "tcp.refused"},
+		{"http://closed.test/", "dns=ok tcp=failed tls=not_applicable http=skipped", "tcp.refused"},
 		{"https://unreach.test/", "dns=ok tcp=failed tls=skipped http=skipped", "tcp.unreachable"},
 		{"https://v6only.test/", "dns=ok tcp=failed tls=skipped http=skipped", "tcp.no_route_family"},
 		{"https://" + addrClosed + "/", "dns=not_applicable tcp=failed tls=skipped http=skipped", "tcp.refused"},

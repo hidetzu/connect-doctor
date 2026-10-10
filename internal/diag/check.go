@@ -5,6 +5,7 @@ package diag
 import (
 	"context"
 	"errors"
+	"net"
 	"net/netip"
 	"time"
 
@@ -81,16 +82,26 @@ func (c *Checker) Check(ctx context.Context, raw string) Result {
 		ms := now().Sub(s).Milliseconds()
 		tcp.DurationMS = &ms
 		tcp.Message = Message(tcp.Code)
-		if conn != nil {
-			// TLS and HTTP are not built yet; the connection carries nothing.
-			conn.Close()
-		}
 		hop.Steps = append(hop.Steps, tcp)
 		if tcp.Status == StatusOK {
 			if t.Scheme == "https" {
-				tls = notImplemented(StepTLS)
+				s := now()
+				var tc net.Conn
+				tls, tc = tlsHandshake(ctx, conn, t.Host)
+				ms := now().Sub(s).Milliseconds()
+				tls.DurationMS = &ms
+				tls.Message = Message(tls.Code)
+				if tc != nil {
+					conn = tc
+				}
 			}
-			http = notImplemented(StepHTTP)
+			if t.Scheme == "http" || tls.Status == StatusOK {
+				http = notImplemented(StepHTTP)
+			}
+		}
+		if conn != nil {
+			// HTTP is not built yet; the connection carries nothing more.
+			conn.Close()
 		}
 	} else {
 		hop.Steps = append(hop.Steps, Step{Step: StepTCP, Status: StatusSkipped})
@@ -139,4 +150,13 @@ func conclude(hops []Hop) Conclusion {
 	// Unreachable until every step is implemented; its sentence arrives with
 	// the HTTP step (hidetzu/connect-doctor#4).
 	return Conclusion{Status: ConclusionOK}
+}
+
+// tlsHandshake adapts tlsStep's *tls.Conn to net.Conn without a typed nil.
+func tlsHandshake(ctx context.Context, conn net.Conn, host string) (Step, net.Conn) {
+	st, tc := tlsStep(ctx, conn, host)
+	if tc == nil {
+		return st, nil
+	}
+	return st, tc
 }

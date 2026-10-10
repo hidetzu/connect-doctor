@@ -50,7 +50,7 @@ func productFiles(t *testing.T) []string {
 		rel, _ := filepath.Rel(root, p)
 		if d.IsDir() {
 			// Test-only code: the fake DNS server and the final gate.
-			if strings.HasPrefix(d.Name(), ".") || rel == "e2e" || rel == filepath.Join("internal", "dnstest") || rel == filepath.Join("internal", "conformance") {
+			if strings.HasPrefix(d.Name(), ".") || rel == "e2e" || rel == filepath.Join("internal", "dnstest") || rel == filepath.Join("internal", "tlstest") || rel == filepath.Join("internal", "conformance") {
 				return filepath.SkipDir
 			}
 			return nil
