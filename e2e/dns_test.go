@@ -39,21 +39,26 @@ func start(t *testing.T) *instance {
 	t.Helper()
 	a := netip.MustParseAddr
 	dns, err := dnstest.Start(map[string]dnstest.Answer{
-		"ok.test":        {Addrs: []netip.Addr{a(addrListen), a(addrV6)}},
-		"closed.test":    {Addrs: []netip.Addr{a(addrClosed)}},
-		"drop.test":      {Addrs: []netip.Addr{a(addrDrop)}},
-		"unreach.test":   {Addrs: []netip.Addr{a(addrUnreachable)}},
-		"v6only.test":    {Addrs: []netip.Addr{a(addrV6)}},
-		"fallback.test":  {Addrs: []netip.Addr{a(addrDrop), a(addrListen)}},
-		"expired.test":   {Addrs: []netip.Addr{a(addrExpired)}},
-		"untrusted.test": {Addrs: []netip.Addr{a(addrUntrusted)}},
-		"mismatch.test":  {Addrs: []netip.Addr{a(addrMismatch)}},
-		"plain.test":     {Addrs: []netip.Addr{a(addrPlain)}},
-		"silent.test":    {Addrs: []netip.Addr{a(addrSilent)}},
-		"private.test":   {Addrs: []netip.Addr{a("10.0.0.7")}},
-		"loop.test":      {Addrs: []netip.Addr{a("127.0.0.1")}},
-		"slow.test":      {Drop: true},
-		"broken.test":    {Rcode: dnstest.RcodeServFail},
+		"ok.test":         {Addrs: []netip.Addr{a(addrListen), a(addrV6)}},
+		"closed.test":     {Addrs: []netip.Addr{a(addrClosed)}},
+		"drop.test":       {Addrs: []netip.Addr{a(addrDrop)}},
+		"unreach.test":    {Addrs: []netip.Addr{a(addrUnreachable)}},
+		"v6only.test":     {Addrs: []netip.Addr{a(addrV6)}},
+		"fallback.test":   {Addrs: []netip.Addr{a(addrDrop), a(addrListen)}},
+		"expired.test":    {Addrs: []netip.Addr{a(addrExpired)}},
+		"untrusted.test":  {Addrs: []netip.Addr{a(addrUntrusted)}},
+		"mismatch.test":   {Addrs: []netip.Addr{a(addrMismatch)}},
+		"plain.test":      {Addrs: []netip.Addr{a(addrPlain)}},
+		"silent.test":     {Addrs: []netip.Addr{a(addrSilent)}},
+		"status503.test":  {Addrs: []netip.Addr{a(addrListen)}},
+		"bigbody.test":    {Addrs: []netip.Addr{a(addrListen)}},
+		"bigheader.test":  {Addrs: []netip.Addr{a(addrListen)}},
+		"httpsilent.test": {Addrs: []netip.Addr{a(addrHTTPSilent)}},
+		"httpclose.test":  {Addrs: []netip.Addr{a(addrHTTPClose)}},
+		"private.test":    {Addrs: []netip.Addr{a("10.0.0.7")}},
+		"loop.test":       {Addrs: []netip.Addr{a("127.0.0.1")}},
+		"slow.test":       {Drop: true},
+		"broken.test":     {Rcode: dnstest.RcodeServFail},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -137,10 +142,10 @@ func TestRefusedURLsReachNothing(t *testing.T) {
 
 	// ⚠ Control first: a permitted URL causes queries for exactly its name.
 	code, res, _ := in.api(t, "https://ok.test/")
-	if code != 200 || res.Conclusion.Status != diag.ConclusionIncomplete || res.ObservedFrom != "server" {
+	if code != 200 || res.Conclusion.Status != diag.ConclusionOK || res.ObservedFrom != "server" {
 		t.Fatalf("ok.test: %d %+v", code, res.Conclusion)
 	}
-	if got := ladder(res); got != "dns=ok tcp=ok tls=ok http=not_implemented" {
+	if got := ladder(res); got != "dns=ok tcp=ok tls=ok http=ok" {
 		t.Errorf("ok.test ladder: %s", got)
 	}
 	if got := res.Hops[0].Steps[0].Detail.Addresses; strings.Join(got, ",") != "93.184.215.14,2606:4700:4700::1111" {
@@ -222,7 +227,7 @@ func TestPage(t *testing.T) {
 	}
 	page = in.page(t, "/?url="+url.QueryEscape("https://ok.test/"))
 	_, res, _ := in.api(t, "https://ok.test/")
-	for _, want := range []string{"✅", "🚧", diag.StatusLabel(diag.StatusNotImplemented), res.Conclusion.Summary, diag.ObservedFromNote, " ms</span>"} {
+	for _, want := range []string{"✅", "ステータス200", res.Conclusion.Summary, diag.ObservedFromNote, " ms</span>"} {
 		if !strings.Contains(page, want) {
 			t.Errorf("/?url= does not contain %q", want)
 		}

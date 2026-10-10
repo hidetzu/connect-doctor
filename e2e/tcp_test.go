@@ -16,8 +16,8 @@ func TestTCPOutcomesThroughTheBinary(t *testing.T) {
 	cases := []struct {
 		url, ladder, code string
 	}{
-		{"https://ok.test/", "dns=ok tcp=ok tls=ok http=not_implemented", ""},
-		{"http://ok.test/", "dns=ok tcp=ok tls=not_applicable http=not_implemented", ""},
+		{"https://ok.test/", "dns=ok tcp=ok tls=ok http=ok", ""},
+		{"http://ok.test/", "dns=ok tcp=ok tls=not_applicable http=ok", ""},
 		{"https://closed.test/", "dns=ok tcp=failed tls=skipped http=skipped", "tcp.refused"},
 		{"http://closed.test/", "dns=ok tcp=failed tls=not_applicable http=skipped", "tcp.refused"},
 		{"https://unreach.test/", "dns=ok tcp=failed tls=skipped http=skipped", "tcp.unreachable"},
@@ -32,8 +32,8 @@ func TestTCPOutcomesThroughTheBinary(t *testing.T) {
 		if c.code != "" && (res.Conclusion.Code != c.code || res.Conclusion.FailedStep != "tcp") {
 			t.Errorf("%s: conclusion %+v, want tcp/%s", c.url, res.Conclusion, c.code)
 		}
-		if c.code == "" && res.Conclusion.Status != diag.ConclusionIncomplete {
-			t.Errorf("%s: conclusion %+v, want incomplete", c.url, res.Conclusion)
+		if c.code == "" && res.Conclusion.Status != diag.ConclusionOK {
+			t.Errorf("%s: conclusion %+v, want ok", c.url, res.Conclusion)
 		}
 	}
 }
