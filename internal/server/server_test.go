@@ -174,11 +174,12 @@ func TestProductionConcurrencyBound(t *testing.T) {
 	var wg sync.WaitGroup
 	for i := 0; i < limits.ConcurrentChecks; i++ {
 		wg.Add(1)
-		xff := fmt.Sprintf("198.51.100.%d", i+1) // distinct clients: the per-client limit is not under test here
-		go func() { defer wg.Done(); getFrom(t, h, "/api/check?url=http://ok.test/", xff) }()
+		// Distinct clients and hostnames: the per-client and per-target limits are not under test here.
+		xff, u := fmt.Sprintf("198.51.100.%d", i+1), fmt.Sprintf("/api/check?url=http://ok%d.test/", i)
+		go func() { defer wg.Done(); getFrom(t, h, u, xff) }()
 		<-r.entered
 	}
-	resp, body := getFrom(t, h, "/api/check?url=http://ok.test/", "198.51.100.200")
+	resp, body := getFrom(t, h, "/api/check?url=http://ok-extra.test/", "198.51.100.200")
 	if resp.StatusCode != http.StatusServiceUnavailable || !strings.Contains(body, "server.busy") {
 		t.Errorf("check %d: %d %s, want 503 server.busy", limits.ConcurrentChecks+1, resp.StatusCode, body)
 	}
@@ -196,13 +197,16 @@ func limitedServer(logs io.Writer, trustXFF bool) http.Handler {
 func TestClientLimitAnswers429(t *testing.T) {
 	var logs bytes.Buffer
 	h := limitedServer(&logs, true)
-	u := "/api/check?url=" + url.QueryEscape("http://ok.test/secret/path?token=SECRET123")
+	// A different hostname each time: the per-target limit (hidetzu/connect-doctor#27) is not under test here.
+	u := func(i int) string {
+		return "/api/check?url=" + url.QueryEscape(fmt.Sprintf("http://ok%d.test/secret/path?token=SECRET123", i))
+	}
 	for i := 0; i < limits.ClientBurst; i++ {
-		if resp, body := getFrom(t, h, u, "203.0.113.7"); resp.StatusCode != 200 {
+		if resp, body := getFrom(t, h, u(i), "203.0.113.7"); resp.StatusCode != 200 {
 			t.Fatalf("check %d: %d %s", i+1, resp.StatusCode, body)
 		}
 	}
-	resp, body := getFrom(t, h, u, "203.0.113.7")
+	resp, body := getFrom(t, h, u(limits.ClientBurst), "203.0.113.7")
 	if resp.StatusCode != http.StatusTooManyRequests || !strings.Contains(body, `"server.rate_limited"`) || resp.Header.Get("Retry-After") == "" {
 		t.Fatalf("over the burst: %d %q Retry-After=%q", resp.StatusCode, body, resp.Header.Get("Retry-After"))
 	}
@@ -212,7 +216,7 @@ func TestClientLimitAnswers429(t *testing.T) {
 			line = l
 		}
 	}
-	if !strings.Contains(line, "refused=burst") || !strings.Contains(line, "target=ok.test") || !strings.Contains(line, "client=203.0.113.0/24") {
+	if !strings.Contains(line, "refused=burst") || !strings.Contains(line, "target=ok3.test") || !strings.Contains(line, "client=203.0.113.0/24") {
 		t.Errorf("refusal log line: %q", line)
 	}
 	for _, leak := range []string{"SECRET123", "secret/path", "203.0.113.7"} {
@@ -225,7 +229,7 @@ func TestClientLimitAnswers429(t *testing.T) {
 		t.Errorf("page over the limit: %d", resp.StatusCode)
 	}
 	// ⚠ Control: another client is unaffected, and the plain page is never limited.
-	if resp, _ := getFrom(t, h, u, "203.0.113.8"); resp.StatusCode != 200 {
+	if resp, _ := getFrom(t, h, u(9), "203.0.113.8"); resp.StatusCode != 200 {
 		t.Errorf("another client: %d", resp.StatusCode)
 	}
 	if resp, _ := getFrom(t, h, "/", "203.0.113.7"); resp.StatusCode != 200 {
@@ -237,11 +241,10 @@ func TestClientLimitAnswers429(t *testing.T) {
 // buy a fresh budget.
 func TestForgedForwardedForDoesNotResetTheLimit(t *testing.T) {
 	h := limitedServer(io.Discard, true)
-	u := "/api/check?url=http://ok.test/"
 	for i := 0; i < limits.ClientBurst; i++ {
-		getFrom(t, h, u, fmt.Sprintf("10.9.9.%d, 203.0.113.9", i))
+		getFrom(t, h, fmt.Sprintf("/api/check?url=http://f%d.test/", i), fmt.Sprintf("10.9.9.%d, 203.0.113.9", i))
 	}
-	if resp, _ := getFrom(t, h, u, "192.0.2.77, 203.0.113.9"); resp.StatusCode != http.StatusTooManyRequests {
+	if resp, _ := getFrom(t, h, "/api/check?url=http://f9.test/", "192.0.2.77, 203.0.113.9"); resp.StatusCode != http.StatusTooManyRequests {
 		t.Errorf("a forged first entry reset the limit: %d", resp.StatusCode)
 	}
 }
@@ -249,11 +252,42 @@ func TestForgedForwardedForDoesNotResetTheLimit(t *testing.T) {
 // ⚠ Without -trust-xff the header is ignored entirely: the TCP peer is the client.
 func TestForwardedForIgnoredUnlessTrusted(t *testing.T) {
 	h := limitedServer(io.Discard, false)
-	u := "/api/check?url=http://ok.test/"
 	for i := 0; i < limits.ClientBurst; i++ {
-		getFrom(t, h, u, fmt.Sprintf("203.0.113.%d", i+1))
+		getFrom(t, h, fmt.Sprintf("/api/check?url=http://g%d.test/", i), fmt.Sprintf("203.0.113.%d", i+1))
 	}
-	if resp, _ := getFrom(t, h, u, "203.0.113.99"); resp.StatusCode != http.StatusTooManyRequests {
+	if resp, _ := getFrom(t, h, "/api/check?url=http://g9.test/", "203.0.113.99"); resp.StatusCode != http.StatusTooManyRequests {
 		t.Errorf("an untrusted X-Forwarded-For changed the client: %d", resp.StatusCode)
+	}
+}
+
+// hidetzu/connect-doctor#27: a production server always carries the target
+// limiter, and a target-limited check answers 429 with Retry-After and one
+// log line holding the hostname and client prefix only.
+func TestTargetLimitAnswers429(t *testing.T) {
+	var logs bytes.Buffer
+	r := staticResolver{[]netip.Addr{netip.MustParseAddr("93.184.215.14")}}
+	c := &diag.Checker{Resolver: r, Dial: pipeDial}
+	h := New(c, log.New(&logs, "", 0), Options{TrustXFF: true}).Handler()
+	if c.Targets == nil {
+		t.Fatal("server.New left the Checker without a target limiter")
+	}
+	u := "/api/check?url=" + url.QueryEscape("http://victim.test/p?token=SECRET9")
+	for i := 0; i < limits.TargetHostBurst; i++ {
+		if resp, body := getFrom(t, h, u, fmt.Sprintf("198.51.100.%d", i+1)); resp.StatusCode != 200 {
+			t.Fatalf("check %d: %d %s", i+1, resp.StatusCode, body)
+		}
+	}
+	// ⚠ A different client each time: the hostname budget holds whoever asks.
+	resp, body := getFrom(t, h, u, "198.51.100.99")
+	if resp.StatusCode != http.StatusTooManyRequests || !strings.Contains(body, `"server.target_rate_limited"`) || resp.Header.Get("Retry-After") == "" {
+		t.Fatalf("over the hostname budget: %d Retry-After=%q %s", resp.StatusCode, resp.Header.Get("Retry-After"), body)
+	}
+	if !strings.Contains(logs.String(), "limit refused=target target=victim.test client=198.51.100.0/24") {
+		t.Errorf("log: %s", logs.String())
+	}
+	for _, leak := range []string{"SECRET9", "/p?", "198.51.100.99"} {
+		if strings.Contains(logs.String(), leak) {
+			t.Errorf("log contains %q", leak)
+		}
 	}
 }

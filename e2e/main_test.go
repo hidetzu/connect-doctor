@@ -39,6 +39,25 @@ const (
 	// HTTP on :80.
 	addrHTTPSilent = "93.184.215.26" // reads the request, never answers
 	addrHTTPClose  = "93.184.215.27" // reads the request, closes without a byte
+
+	// Redirect chains that revisit hosts get their own addresses, so the
+	// per-target limits (hidetzu/connect-doctor#27) are not what they test.
+	addrSpinA          = "93.184.215.37"
+	addrSpinB          = "93.184.215.38"
+	addrSlowA          = "93.184.215.40"
+	addrSlowB          = "93.184.215.41"
+	addrRedirToLimited = "93.184.215.46"
+
+	// hidetzu/connect-doctor#27: TLS listeners that count what reaches them.
+	addrLimited  = "93.184.215.44" // limited.test
+	addrShared   = "93.184.215.45" // share1..share6.test, one address
+	addrLimited2 = "93.184.215.47" // limited2.test, the redirect target
+)
+
+var (
+	limitedAccepts  atomic.Int32
+	sharedAccepts   atomic.Int32
+	limited2Accepts atomic.Int32
 )
 
 // lastRequest is what the most recent request to addrListen carried
@@ -104,6 +123,14 @@ func setup() error {
 		{"addr", "add", addrSilent + "/32", "dev", "lo"},
 		{"addr", "add", addrHTTPSilent + "/32", "dev", "lo"},
 		{"addr", "add", addrHTTPClose + "/32", "dev", "lo"},
+		{"addr", "add", addrSpinA + "/32", "dev", "lo"},
+		{"addr", "add", addrSpinB + "/32", "dev", "lo"},
+		{"addr", "add", addrSlowA + "/32", "dev", "lo"},
+		{"addr", "add", addrSlowB + "/32", "dev", "lo"},
+		{"addr", "add", addrRedirToLimited + "/32", "dev", "lo"},
+		{"addr", "add", addrLimited + "/32", "dev", "lo"},
+		{"addr", "add", addrShared + "/32", "dev", "lo"},
+		{"addr", "add", addrLimited2 + "/32", "dev", "lo"},
 		{"link", "add", "d0", "type", "dummy"},
 		{"link", "set", "d0", "up"},
 		{"route", "add", addrDrop + "/32", "dev", "d0"},
@@ -130,13 +157,22 @@ func setup() error {
 	}
 	now := time.Now()
 	good, _ := ca.Valid("ok.test", "fallback.test", "status503.test", "bigbody.test", "bigheader.test",
-		"redir.test", "toloop.test", "tolocal.test", "toport.test", "spin.test", "rel.test", "slowhop.test", addrListen)
+		"redir.test", "toloop.test", "tolocal.test", "toport.test", "spin-a.test", "spin-b.test", "rel.test",
+		"slowhop-a.test", "slowhop-b.test", "tolimited.test", "limited.test", "limited2.test",
+		"share1.test", "share2.test", "share3.test", "share4.test", "share5.test", "share6.test", addrListen)
 	expired, _ := ca.Leaf([]string{"expired.test"}, now.Add(-48*time.Hour), now.Add(-24*time.Hour))
 	untrusted, _ := stranger.Valid("untrusted.test")
 	mismatch, _ := ca.Valid("other.test")
 
-	if err := serveHTTP(addrListen, &good); err != nil {
-		return err
+	for _, a := range []string{addrListen, addrSpinA, addrSpinB, addrSlowA, addrSlowB, addrRedirToLimited} {
+		if err := serveHTTP(a, &good); err != nil {
+			return err
+		}
+	}
+	for a, n := range map[string]*atomic.Int32{addrLimited: &limitedAccepts, addrShared: &sharedAccepts, addrLimited2: &limited2Accepts} {
+		if err := listen(a+":443", n, &good); err != nil {
+			return err
+		}
 	}
 	for addr, cert := range map[string]*tls.Certificate{
 		addrExpired: &expired, addrUntrusted: &untrusted, addrMismatch: &mismatch,
@@ -249,8 +285,12 @@ func serveHTTP(addr string, cert *tls.Certificate) error {
 			http.Redirect(w, r, "http://localhost/", http.StatusFound)
 		case "toport.test":
 			http.Redirect(w, r, "http://ok.test:8080/", http.StatusFound)
-		case "spin.test":
-			http.Redirect(w, r, "https://spin.test/", http.StatusFound)
+		case "spin-a.test":
+			http.Redirect(w, r, "https://spin-b.test/", http.StatusFound)
+		case "spin-b.test":
+			http.Redirect(w, r, "https://spin-a.test/", http.StatusFound)
+		case "tolimited.test":
+			http.Redirect(w, r, "https://limited2.test/", http.StatusFound)
 		case "rel.test":
 			if r.URL.Path == "/after" {
 				_, _ = w.Write([]byte("ok"))
@@ -258,11 +298,16 @@ func serveHTTP(addr string, cert *tls.Certificate) error {
 			}
 			w.Header().Set("Location", "/after")
 			w.WriteHeader(http.StatusFound)
-		case "slowhop.test":
+		case "slowhop-a.test", "slowhop-b.test":
 			// Each hop answers just inside limits.HTTP, so only the whole-check
-			// ceiling (limits.Check) can stop the chain.
+			// ceiling (limits.Check) can stop the chain. Two hosts alternate so
+			// the per-target limits are not what stops it.
 			time.Sleep(3 * time.Second)
-			w.Header().Set("Location", "/next"+strconv.Itoa(len(r.URL.Path)))
+			next := "https://slowhop-b.test/"
+			if host == "slowhop-b.test" {
+				next = "https://slowhop-a.test/"
+			}
+			w.Header().Set("Location", next+strconv.Itoa(len(r.URL.Path)))
 			w.WriteHeader(http.StatusFound)
 		default:
 			_, _ = w.Write([]byte("ok"))

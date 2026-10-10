@@ -43,6 +43,10 @@ type Result struct {
 	DurationMS       int64      `json:"duration_ms"`
 	Conclusion       Conclusion `json:"conclusion"`
 	Hops             []Hop      `json:"hops"`
+
+	// RetryAfter is set when a target limit stopped the check (not in the JSON;
+	// the server turns it into a Retry-After header).
+	RetryAfter time.Duration `json:"-"`
 }
 
 // Conclusion is the one answer.
@@ -60,6 +64,8 @@ type Hop struct {
 	// (an input.* code); its steps are all skipped.
 	Code  string `json:"code,omitempty"`
 	Steps []Step `json:"steps"`
+
+	retryAfter time.Duration
 }
 
 // Step is one layer's result.
@@ -70,6 +76,8 @@ type Step struct {
 	Code       string  `json:"code,omitempty"`
 	Message    string  `json:"message,omitempty"`
 	Detail     *Detail `json:"detail,omitempty"`
+
+	retryAfter time.Duration
 }
 
 // Detail is what a step observed. ⚠ A refused address never appears here

@@ -19,7 +19,7 @@ type Dialer func(ctx context.Context, addr netip.Addr, port uint16) (net.Conn, e
 
 // tcpStep tries addrs in order (the DNS step already put IPv4 first) until
 // one connects. It returns the step and, when ok, the open connection.
-func tcpStep(ctx context.Context, d Dialer, addrs []netip.Addr, portStr string, now func() time.Time) (Step, net.Conn) {
+func tcpStep(ctx context.Context, d Dialer, gate TargetGate, addrs []netip.Addr, portStr string, now func() time.Time) (Step, net.Conn) {
 	port64, _ := strconv.ParseUint(portStr, 10, 16) // target.Parse allows only 80 and 443
 	port := uint16(port64)
 
@@ -28,7 +28,17 @@ func tcpStep(ctx context.Context, d Dialer, addrs []netip.Addr, portStr string, 
 
 	var attempts []Attempt
 	var codes []string
+	var retryAfter time.Duration
 	for _, a := range addrs {
+		if gate != nil {
+			// ⚠ Counted per attempt, so a name with many addresses cannot dodge it.
+			if ok, after := gate.AllowDial(netip.AddrPortFrom(a, port)); !ok {
+				attempts = append(attempts, Attempt{Address: netip.AddrPortFrom(a, port).String(), Outcome: CodeTargetLimited})
+				codes = append(codes, CodeTargetLimited)
+				retryAfter = max(retryAfter, after)
+				continue
+			}
+		}
 		actx, acancel := context.WithTimeout(ctx, limits.TCPAttempt)
 		start := now()
 		conn, err := d(actx, a, port)
@@ -53,7 +63,7 @@ func tcpStep(ctx context.Context, d Dialer, addrs []netip.Addr, portStr string, 
 		}
 	}
 
-	s := Step{Step: StepTCP, Status: StatusFailed, Detail: &Detail{Attempts: attempts}}
+	s := Step{Step: StepTCP, Status: StatusFailed, Detail: &Detail{Attempts: attempts}, retryAfter: retryAfter}
 	if len(codes) == 0 {
 		// No address to try: the DNS step never hands over an empty list.
 		s.Code = "tcp.failed"
@@ -62,7 +72,7 @@ func tcpStep(ctx context.Context, d Dialer, addrs []netip.Addr, portStr string, 
 	// ⚠ Owner decision (hidetzu/connect-doctor#2, 2026-10-10): the first
 	// attempted address's outcome concludes. Every attempt stays in detail.
 	s.Code = publicCode(codes[0])
-	if s.Code == "tcp.refused_address" {
+	if s.Code == "tcp.refused_address" || s.Code == CodeTargetLimited {
 		s.Status = StatusRefused
 	}
 	if allNoIPv6Route(addrs[:len(codes)], codes) {

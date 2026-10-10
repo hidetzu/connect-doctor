@@ -50,6 +50,18 @@ const (
 	// GlobalPerHour is the cost breaker: checks per hour per instance, whoever asks.
 	GlobalPerHour = 3000
 
+	// Per-target limits (hidetzu/connect-doctor#27): whoever asks, ConnectDoctor connects to
+	// one hostname at most TargetHostBurst times at once and then once per
+	// TargetHostRefill (6/min); to one destination IP+port at most TargetDestBurst times at
+	// once and then once per TargetDestRefill (30/min), counted per TCP attempt.
+	TargetHostBurst  = 2
+	TargetHostRefill = 10 * time.Second
+	TargetDestBurst  = 5
+	TargetDestRefill = 2 * time.Second
+
+	// TrackedTargets bounds each target table's memory, like TrackedClients.
+	TrackedTargets = 10000
+
 	// TrackedClients bounds the limiter's memory; the least recently seen client is
 	// forgotten first.
 	TrackedClients = 10000

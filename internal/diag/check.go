@@ -20,8 +20,21 @@ type Checker struct {
 	// Dial is required. ⚠ There is no default: a Checker built without one
 	// panics rather than quietly reaching the real network from a test.
 	Dial Dialer
-	Now  func() time.Time
+	// Targets limits connections per hostname and per destination
+	// (hidetzu/connect-doctor#27). server.New always installs one; nil means
+	// no target limit (unit tests only).
+	Targets TargetGate
+	Now     func() time.Time
 }
+
+// TargetGate is the per-target limiter (internal/ratelimit.Targets).
+type TargetGate interface {
+	AllowHost(host string) (bool, time.Duration)
+	AllowDial(dest netip.AddrPort) (bool, time.Duration)
+}
+
+// CodeTargetLimited is the code for a check a target limit stopped.
+const CodeTargetLimited = "server.target_rate_limited"
 
 // Check diagnoses raw. It never returns an error: every outcome, including
 // refusing the input, is a Result.
@@ -85,6 +98,12 @@ func (c *Checker) Check(ctx context.Context, raw string) Result {
 		}
 		t = nt
 	}
+	for _, h := range res.Hops {
+		res.RetryAfter = max(res.RetryAfter, h.retryAfter)
+		for _, st := range h.Steps {
+			res.RetryAfter = max(res.RetryAfter, st.retryAfter)
+		}
+	}
 	res.DurationMS = now().Sub(start).Milliseconds()
 	return res
 }
@@ -97,6 +116,13 @@ var followed = map[int]bool{301: true, 302: true, 303: true, 307: true, 308: tru
 // response is a redirect to follow, the next URL resolved against this one.
 func (c *Checker) runHop(ctx context.Context, t target.Target, now func() time.Time) (Hop, string) {
 	hop := Hop{URL: t.URL}
+	if c.Targets != nil {
+		// ⚠ Spent for every hop, redirect targets included (hidetzu/connect-doctor#27).
+		if ok, after := c.Targets.AllowHost(t.Host); !ok {
+			hop.Code, hop.retryAfter, hop.Steps = CodeTargetLimited, after, skippedFrom(0)
+			return hop, ""
+		}
+	}
 	var dns Step
 	var addrs []netip.Addr
 	if t.IsLiteral() {
@@ -123,7 +149,7 @@ func (c *Checker) runHop(ctx context.Context, t target.Target, now func() time.T
 			panic("diag: Checker.Dial is nil")
 		}
 		s := now()
-		tcp, conn := tcpStep(ctx, c.Dial, addrs, t.Port, now)
+		tcp, conn := tcpStep(ctx, c.Dial, c.Targets, addrs, t.Port, now)
 		ms := now().Sub(s).Milliseconds()
 		tcp.DurationMS = &ms
 		tcp.Message = Message(tcp.Code)
@@ -185,6 +211,9 @@ func conclude(hops []Hop) Conclusion {
 	lastOK := ""
 	var gaps []string
 	for i, h := range hops {
+		if h.Code == CodeTargetLimited {
+			return Conclusion{Status: ConclusionRefused, Code: CodeTargetLimited, Summary: summaryTargetLimited(i + 1)}
+		}
 		if h.Code != "" {
 			// A redirect target refused before any step ran (only hops ≥ 2).
 			return Conclusion{Status: ConclusionRefused, Code: "http.redirect_refused", Summary: summaryRedirectRefused(i+1, h.Code)}
@@ -194,6 +223,9 @@ func conclude(hops []Hop) Conclusion {
 			case StatusFailed:
 				return Conclusion{Status: ConclusionFailed, FailedStep: s.Step, Code: s.Code, Summary: summaryFailed(s.Step, s.Code) + summaryAfterRedirects(i)}
 			case StatusRefused:
+				if s.Code == CodeTargetLimited {
+					return Conclusion{Status: ConclusionRefused, Code: CodeTargetLimited, Summary: summaryTargetLimited(i + 1)}
+				}
 				if i > 0 {
 					// ⚠ Owner decision (hidetzu/connect-doctor#5): a refused
 					// redirect target is http.redirect_refused, naming the hop.

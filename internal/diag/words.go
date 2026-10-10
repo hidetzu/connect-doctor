@@ -54,6 +54,8 @@ var messages = map[string]string{
 
 	"server.rate_limited": "短い時間に診断が集中したため、ConnectDoctorは一時的に受け付けを止めています。少し待ってから、もう一度お試しください。",
 
+	"server.target_rate_limited": "この診断先への診断が短い時間に集中しているため、ConnectDoctorは接続を控えました。診断先の負担を避けるための制限で、サイト側の問題ではありません。少し待ってから、もう一度お試しください。",
+
 	"server.busy": "ただいま混み合っています。しばらくしてから、もう一度お試しください。",
 }
 
@@ -142,4 +144,11 @@ func summaryAfterRedirects(redirects int) string {
 		return ""
 	}
 	return "（リダイレクトを" + strconv.Itoa(redirects) + "回たどった先の結果です。）"
+}
+
+func summaryTargetLimited(hop int) string {
+	if hop == 1 {
+		return Message(CodeTargetLimited)
+	}
+	return "リダイレクト先（" + strconv.Itoa(hop) + "番目のURL）への診断が短い時間に集中しているため、ConnectDoctorは接続を控えました。診断先の負担を避けるための制限で、サイト側の問題ではありません。少し待ってから、もう一度お試しください。"
 }
