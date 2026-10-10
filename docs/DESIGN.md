@@ -293,6 +293,9 @@ once the API ships**; renaming one is a breaking change.
   reworded** without a version bump.
 - ⚠ **A refused address never appears in `detail`** (T5).
 - `duration_ms` is wall time measured on our server, ⚠ **for that step only**.
+- `cached: true` means the result was answered from the 30-second cache without connecting
+  again; `checked_at` is then the original check's time (hidetzu/connect-doctor#28). ⚠ **Absent on
+  a fresh check.** `fresh=1` (the page's 再診断) skips the cache, ⚠ **never the limits**.
 - ⚠ **HTTP status of the API**: `400` for `input.*`, `200` for every other result (a failed
   target is a successful diagnosis), `503` with `{"error": {"code": "server.busy", ...}}` when the
   concurrency cap is reached — ⚠ **never a `Result`, so "busy" cannot be read as the target failing**.
