@@ -86,8 +86,7 @@ question, or because it would make the server a tool for something else.**
   a local DNS override, a VPN or a firewall on the user's side is invisible to us.
 - ⚠ **"It fails from ConnectDoctor" does not mean "it is down"** — the target may block our
   network, or route differently.
-- ⚠ **Behind Cloudflare Tunnel, "our server" is the host the binary runs on — not Cloudflare**
-  ([`adr/0007`](adr/0007-public-exposure-is-a-free-cloudflare-tunnel-in-front-of-one-host.md)).
+- ⚠ **"Our server" is a Cloud Run instance in Tokyo** ([`adr/0008`](adr/0008-public-exposure-is-cloud-run-in-tokyo.md)).
 - ⚠ **The page and the API both say this, every time**, not in a footnote
   ([`adr/0001`](adr/0001-every-result-says-it-was-observed-from-our-server.md)).
 

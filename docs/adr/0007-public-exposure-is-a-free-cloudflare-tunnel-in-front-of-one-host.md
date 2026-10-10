@@ -1,6 +1,6 @@
 # 0007 — Public exposure is a free Cloudflare Tunnel in front of one host we run
 
-Status: accepted (2026-10-10), ⚠ **with the host itself still open** (hidetzu/connect-doctor#8)
+Status: ⚠ **superseded by [`0008`](0008-public-exposure-is-cloud-run-in-tokyo.md) (2026-10-10).** ⚠ Kept for the reasons Workers and Containers were not used.
 
 ## Decision
 

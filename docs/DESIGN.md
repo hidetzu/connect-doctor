@@ -145,7 +145,7 @@ overturn** (listed in the bootstrap PR's open decisions).
 design starts from it, not adds it later.
 
 **Assets**: the server's internal network, cloud metadata endpoints (`169.254.169.254`,
-`fd00:ec2::254`), services on loopback, the server's reputation and egress, the users' privacy.
+`fd00:ec2::254`, ⚠ **`metadata.google.internal` on Cloud Run, which issues our service account's token** — [`adr/0008`](adr/0008-public-exposure-is-cloud-run-in-tokyo.md)), services on loopback, the server's reputation and egress, the users' privacy.
 
 **Attacker**: anyone who can send a URL — page or API, no authentication.
 
@@ -172,9 +172,9 @@ Address Registries that is not globally reachable (RFC 6890 § 2.2.2 "Global" = 
 documentation, benchmarking, `0.0.0.0/8`, `240.0.0.0/4`, NAT64 `64:ff9b::/96`, 6to4
 `2002::/16`, Teredo `2001::/32`. ⚠ **Where the registry is silent, it refuses** (fail closed).
 
-⚠ **Defence in depth that is not code**: the deployment should also deny private egress at the
-network layer. ⚠ **That is a deployment decision, listed for the owner** — ⚠ **the code does not
-rely on it.**
+⚠ **Defence in depth that is not code**: ⚠ **on Cloud Run's free tier there is no network-level egress
+filter; the code is the only egress defence, by decision** ([`adr/0008`](adr/0008-public-exposure-is-cloud-run-in-tokyo.md)).
+⚠ **The service account has no roles, so a leaked metadata token is worth nothing.**
 
 ## 5. Minimal architecture
 
