@@ -23,6 +23,9 @@ code { font-family:var(--mono); font-size:.9em; }
 .top { display:flex; flex-wrap:wrap; gap:.5rem 1rem; align-items:center; justify-content:space-between; margin-bottom:1rem; }
 .brand { display:inline-flex; align-items:center; gap:.55rem; font-weight:700; font-size:1.15rem; letter-spacing:.01em; }
 .brand > span { display:inline-flex; } .brand svg { width:28px; height:28px; flex:none; display:block; }
+.lede { margin:-.4rem 0 1rem; color:var(--muted); font-size:.9rem; }
+.foot { margin-top:2.5rem; padding-top:1rem; border-top:1px solid var(--line); color:var(--muted); font-size:.8rem; display:grid; gap:.3rem; }
+.foot p { margin:0; }
 .chip { display:inline-flex; flex-direction:column; padding:.3rem .65rem; border:1px solid var(--line); border-radius:999px; font-size:.78rem; line-height:1.3; background:var(--panel); }
 .chip b { font-weight:600; } .chip b::before { content:"◉ "; color:var(--accent); } .chip small { color:var(--muted); }
 form { display:flex; gap:.5rem; }
@@ -63,6 +66,7 @@ dt { color:var(--muted); } dd { margin:0; overflow-wrap:anywhere; min-width:0; }
   <span class="brand"><span aria-hidden="true">{{icon}}</span>ConnectDoctor</span>
   <span class="chip"><b>{{if .Vantage}}{{.Vantage}} から観測{{else}}ConnectDoctorのサーバから観測{{end}}</b><small>あなたのPCからの接続結果ではありません</small></span>
 </header>
+<p class="lede">{{.Tagline}}</p>
 <form method="get" action="/">
   <input name="url" inputmode="url" autocomplete="url" spellcheck="false" placeholder="https://example.com" value="{{.Input}}" aria-label="診断するURL" required>
   <button type="submit">診断する</button>
@@ -93,6 +97,10 @@ dt { color:var(--muted); } dd { margin:0; overflow-wrap:anywhere; min-width:0; }
 {{end}}{{end}}
 <p class="muted">同じ結果をJSONで: <code>GET /api/check?url=…</code></p>
 {{end}}
+<footer class="foot">
+  <p>{{.Privacy}}</p>
+  <p><a href="{{.Source}}">ソースコード（GitHub）</a></p>
+</footer>
 </main>
 </body>
 </html>
