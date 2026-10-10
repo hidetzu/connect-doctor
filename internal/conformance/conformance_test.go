@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -28,6 +29,14 @@ func repoRoot(t *testing.T) string {
 		}
 		dir = parent
 	}
+}
+
+// relPos prints a position relative to the repository, so CI logs carry no
+// absolute local path (.claude/rules/git.md).
+func relPos(t *testing.T, fset *token.FileSet, pos token.Pos) string {
+	p := fset.Position(pos)
+	rel, _ := filepath.Rel(repoRoot(t), p.Filename)
+	return rel + ":" + strconv.Itoa(p.Line)
 }
 
 // productFiles are the non-test Go files that ship in the binary.
@@ -76,11 +85,42 @@ func TestNoSelfDialingCalls(t *testing.T) {
 			switch x := n.(type) {
 			case *ast.SelectorExpr:
 				if id, ok := x.X.(*ast.Ident); ok && forbidden[id.Name+"."+x.Sel.Name] {
-					t.Errorf("%s: %s.%s is forbidden in product code", fset.Position(x.Pos()), id.Name, x.Sel.Name)
+					t.Errorf("%s: %s.%s is forbidden in product code", relPos(t, fset, x.Pos()), id.Name, x.Sel.Name)
 				}
 			case *ast.KeyValueExpr:
 				if id, ok := x.Key.(*ast.Ident); ok && id.Name == "InsecureSkipVerify" {
-					t.Errorf("%s: InsecureSkipVerify is forbidden in product code", fset.Position(x.Pos()))
+					t.Errorf("%s: InsecureSkipVerify is forbidden in product code", relPos(t, fset, x.Pos()))
+				}
+			}
+			return true
+		})
+	}
+}
+
+// dialerAllowed are the only product files that may build a net.Dialer.
+// ⚠ Every other dial must go through internal/dial (.claude/rules/security.md § 1).
+var dialerAllowed = map[string]string{
+	filepath.Join("internal", "dial", "dial.go"):      "the one dialer, with the policy hook",
+	filepath.Join("cmd", "connect-doctor", "main.go"): "the operator's resolver address, never a target",
+}
+
+func TestOnlyInternalDialBuildsADialer(t *testing.T) {
+	root := repoRoot(t)
+	fset := token.NewFileSet()
+	for _, f := range productFiles(t) {
+		rel, _ := filepath.Rel(root, f)
+		if _, ok := dialerAllowed[rel]; ok {
+			continue
+		}
+		file, err := parser.ParseFile(fset, f, nil, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ast.Inspect(file, func(n ast.Node) bool {
+			if x, ok := n.(*ast.SelectorExpr); ok {
+				if id, ok := x.X.(*ast.Ident); ok && id.Name == "net" && (x.Sel.Name == "Dialer" || x.Sel.Name == "DialTCP" || x.Sel.Name == "DialUDP" || x.Sel.Name == "DialIP") {
+					p := fset.Position(x.Pos())
+					t.Errorf("%s:%d: net.%s outside internal/dial", rel, p.Line, x.Sel.Name)
 				}
 			}
 			return true
