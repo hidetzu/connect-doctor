@@ -25,11 +25,26 @@ request *in*; ⚠ **our DNS, TCP, TLS and HTTP go *out* from wherever the binary
   ($5/month); the Free plan lists them as not available**
   ([Containers pricing](https://developers.cloudflare.com/containers/pricing/)).
   ⚠ **Rejected by the owner's cost decision, not on technical grounds.** Revisit if that changes.
-- **Workers with TCP sockets (`connect()`)** — ⚠ **our reading, not tested**: a Worker is a
-  JavaScript runtime, so the Go implementation would be rewritten, and `connect()` takes a host
-  name, so resolving once and dialling the validated address (`adr/0003`) and observing DNS as
-  its own step could not be done the way the design requires
-  ([TCP sockets](https://developers.cloudflare.com/workers/runtime-apis/tcp-sockets/)).
+- **Workers (free) with TCP sockets (`connect()`), in any language.** ⚠ **The owner allowed
+  changing the language to fit the free tier (2026-10-10). ⚠ It would not help: the limits below
+  belong to the Workers runtime, so JavaScript, TypeScript and Rust/Wasm all hit them.**
+  From [TCP sockets](https://developers.cloudflare.com/workers/runtime-apis/tcp-sockets/), read
+  2026-10-10:
+  - ⚠ **"Outbound TCP sockets to Cloudflare IP ranges are blocked."** ⚠ **Measured the same day:
+    `example.com` and `www.cloudflare.com` resolve only to addresses inside Cloudflare's published
+    ranges (`104.16.0.0/13`, `172.64.0.0/13`, [ips-v4](https://www.cloudflare.com/ips-v4/)).**
+    ⚠ **So the TCP and TLS steps could not run for any site behind Cloudflare** — ⚠ **including
+    the README's own example.**
+  - ⚠ **No documented way to read why a TLS handshake failed** — a rejected promise only.
+    ⚠ **Expired / untrusted / name mismatch (`DESIGN.md` § 2, TLS) is the core of the TLS answer.**
+  - ⚠ **No documented way to tell `refused` from `timeout`.**
+  - Ports 80/443 are pointed at `fetch` rather than sockets; `connect()` takes a host name, and
+    whether it resolves internally is not documented — ⚠ **so `adr/0003` could not be shown to hold.**
+  - Free plan: 10 ms CPU per request, 50 subrequests, 100,000 requests/day
+    ([limits](https://developers.cloudflare.com/workers/platform/limits/)) — ⚠ workable, ⚠ **not
+    the reason for rejecting it.**
+  ⚠ **Rejected: the product's question ("which layer, and why") could not be answered there.
+  Go stays** (`adr/0006`).
 
 ## ⚠ Defence in depth that this adds, and that it does not
 
