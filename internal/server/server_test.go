@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
@@ -43,8 +44,13 @@ func get(t *testing.T, h http.Handler, target string) (*http.Response, string) {
 	return rec.Result(), string(b)
 }
 
+func pipeDial(context.Context, netip.Addr, uint16) (net.Conn, error) {
+	c, _ := net.Pipe()
+	return c, nil
+}
+
 func newTestServer(r diag.Resolver, logs io.Writer, slots int) *Server {
-	return newWithSlots(&diag.Checker{Resolver: r}, log.New(logs, "", 0), slots)
+	return newWithSlots(&diag.Checker{Resolver: r, Dial: pipeDial}, log.New(logs, "", 0), slots)
 }
 
 func TestAPIAndPageRenderTheSameResult(t *testing.T) {

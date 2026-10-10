@@ -5,6 +5,7 @@ package diag
 import (
 	"context"
 	"errors"
+	"net/netip"
 	"time"
 
 	"github.com/hidetzu/connect-doctor/internal/limits"
@@ -14,7 +15,10 @@ import (
 // Checker runs checks.
 type Checker struct {
 	Resolver Resolver
-	Now      func() time.Time
+	// Dial is required. ⚠ There is no default: a Checker built without one
+	// panics rather than quietly reaching the real network from a test.
+	Dial Dialer
+	Now  func() time.Time
 }
 
 // Check diagnoses raw. It never returns an error: every outcome, including
@@ -48,29 +52,50 @@ func (c *Checker) Check(ctx context.Context, raw string) Result {
 
 	hop := Hop{URL: t.URL}
 	var dns Step
+	var addrs []netip.Addr
 	if t.IsLiteral() {
 		// target.Parse already applied the policy to a literal.
 		dns = Step{Step: StepDNS, Status: StatusNotApplicable, Detail: &Detail{Addresses: []string{t.Addr.String()}}}
+		addrs = []netip.Addr{t.Addr}
 	} else {
 		s := now()
-		dns, _ = dnsStep(ctx, c.Resolver, t.Host)
+		dns, addrs = dnsStep(ctx, c.Resolver, t.Host)
 		ms := now().Sub(s).Milliseconds()
 		dns.DurationMS = &ms
 	}
 	dns.Message = Message(dns.Code)
 	hop.Steps = append(hop.Steps, dns)
 
-	if dns.Status == StatusOK || dns.Status == StatusNotApplicable {
-		hop.Steps = append(hop.Steps, notImplemented(StepTCP))
-		if t.Scheme == "https" {
-			hop.Steps = append(hop.Steps, notImplemented(StepTLS))
-		} else {
-			hop.Steps = append(hop.Steps, Step{Step: StepTLS, Status: StatusNotApplicable})
-		}
-		hop.Steps = append(hop.Steps, notImplemented(StepHTTP))
-	} else {
-		hop.Steps = append(hop.Steps, skippedFrom(1)...)
+	tls := Step{Step: StepTLS, Status: StatusSkipped}
+	if t.Scheme == "http" {
+		tls.Status = StatusNotApplicable
 	}
+	http := Step{Step: StepHTTP, Status: StatusSkipped}
+
+	if dns.Status == StatusOK || dns.Status == StatusNotApplicable {
+		if c.Dial == nil {
+			panic("diag: Checker.Dial is nil")
+		}
+		s := now()
+		tcp, conn := tcpStep(ctx, c.Dial, addrs, t.Port, now)
+		ms := now().Sub(s).Milliseconds()
+		tcp.DurationMS = &ms
+		tcp.Message = Message(tcp.Code)
+		if conn != nil {
+			// TLS and HTTP are not built yet; the connection carries nothing.
+			conn.Close()
+		}
+		hop.Steps = append(hop.Steps, tcp)
+		if tcp.Status == StatusOK {
+			if t.Scheme == "https" {
+				tls = notImplemented(StepTLS)
+			}
+			http = notImplemented(StepHTTP)
+		}
+	} else {
+		hop.Steps = append(hop.Steps, Step{Step: StepTCP, Status: StatusSkipped})
+	}
+	hop.Steps = append(hop.Steps, tls, http)
 	res.Hops = []Hop{hop}
 	res.Conclusion = conclude(res.Hops)
 	res.DurationMS = now().Sub(start).Milliseconds()

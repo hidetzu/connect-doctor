@@ -27,8 +27,14 @@ func (f *fakeResolver) LookupNetIP(_ context.Context, _, host string) ([]netip.A
 	return out, f.err
 }
 
+// okDial "connects" to anything, over an in-memory pipe.
+func okDial(context.Context, netip.Addr, uint16) (net.Conn, error) {
+	c, _ := net.Pipe()
+	return c, nil
+}
+
 func check(r Resolver, url string) Result {
-	return (&Checker{Resolver: r}).Check(context.Background(), url)
+	return (&Checker{Resolver: r, Dial: okDial}).Check(context.Background(), url)
 }
 
 func statuses(h Hop) string {
@@ -99,7 +105,7 @@ func TestDNSOkIsIncomplete(t *testing.T) {
 	if res.Conclusion.Status != ConclusionIncomplete || res.Conclusion.FailedStep != "" {
 		t.Errorf("conclusion = %+v, want incomplete", res.Conclusion)
 	}
-	if got := statuses(res.Hops[0]); got != "dns=ok tcp=not_implemented tls=not_implemented http=not_implemented" {
+	if got := statuses(res.Hops[0]); got != "dns=ok tcp=ok tls=not_implemented http=not_implemented" {
 		t.Errorf("steps = %s", got)
 	}
 	if got := res.Hops[0].Steps[0].Detail.Addresses; strings.Join(got, ",") != "93.184.215.14,2606:4700:4700::1111" {
@@ -113,7 +119,7 @@ func TestDNSOkIsIncomplete(t *testing.T) {
 	}
 	// http:// has no TLS step at all.
 	res = check(r, "http://example.com/")
-	if got := statuses(res.Hops[0]); got != "dns=ok tcp=not_implemented tls=not_applicable http=not_implemented" {
+	if got := statuses(res.Hops[0]); got != "dns=ok tcp=ok tls=not_applicable http=not_implemented" {
 		t.Errorf("http steps = %s", got)
 	}
 }
@@ -149,7 +155,7 @@ func TestLiteralAddressSkipsDNS(t *testing.T) {
 	if len(r.asked) != 0 {
 		t.Errorf("resolver asked %v", r.asked)
 	}
-	if got := statuses(res.Hops[0]); got != "dns=not_applicable tcp=not_implemented tls=not_implemented http=not_implemented" {
+	if got := statuses(res.Hops[0]); got != "dns=not_applicable tcp=ok tls=not_implemented http=not_implemented" {
 		t.Errorf("steps = %s", got)
 	}
 }
@@ -159,6 +165,7 @@ func TestEveryCodeHasWords(t *testing.T) {
 		target.CodeMissing, target.CodeMalformed, target.CodeUnsupportedScheme, target.CodeUnsupportedPort,
 		target.CodeCredentials, target.CodeLocalName, target.CodeRefusedAddress, target.CodeIDNNotImplemented,
 		"dns.not_found", "dns.timeout", "dns.server_failure", "dns.refused_address", "server.busy",
+		"tcp.refused", "tcp.timeout", "tcp.unreachable", "tcp.no_route_family", "tcp.refused_address", "tcp.failed",
 	}
 	for _, c := range codes {
 		if Message(c) == "" {

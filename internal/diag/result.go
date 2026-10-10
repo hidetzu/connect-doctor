@@ -72,6 +72,16 @@ type Step struct {
 // Detail is what a step observed. ⚠ A refused address never appears here
 // (.claude/rules/security.md § 5).
 type Detail struct {
-	Addresses []string `json:"addresses,omitempty"`
-	Error     string   `json:"error,omitempty"`
+	Addresses []string  `json:"addresses,omitempty"` // DNS
+	Address   string    `json:"address,omitempty"`   // TCP: the address that connected
+	Attempts  []Attempt `json:"attempts,omitempty"`  // TCP: every address tried, in order
+	Error     string    `json:"error,omitempty"`
+}
+
+// Attempt is one TCP connection attempt.
+type Attempt struct {
+	Address    string `json:"address,omitempty"` // ⚠ absent when the policy refused it
+	Outcome    string `json:"outcome"`           // "ok" or a tcp.* code
+	DurationMS int64  `json:"duration_ms"`
+	Error      string `json:"error,omitempty"` // only for tcp.failed
 }
