@@ -37,11 +37,11 @@ Status: accepted (2026-10-10). Builds on [`0008`](0008-public-exposure-is-cloud-
   `https://example.com` is `ok` on all four layers; `169.254.169.254`, `metadata.google.internal`
   and `127.0.0.1` are refused. ConnectDoctor diagnosing its own address: `ok`, TLS 1.3, a
   certificate from Google Trust Services.
-- ⚠ **NOT re-measured: where the client address arrives through the mapping.** ⚠ **The 0008
-  measurement used a throwaway service on its own `run.app` URL; repeating it through this domain
-  would need the mapping moved off the live service.** ⚠ **Expected to be the same (the same Google
-  front end); that expectation is not a measurement.** ⚠ **hidetzu/connect-doctor#6 measures it
-  through this domain before relying on it.**
+- ⚠ **Measured later the same day (revision `connect-doctor-00003`, hidetzu/connect-doctor#6):
+  through the mapping, four checks from one machine with a different forged `X-Forwarded-For`
+  each answered `200 200 200 429`.** ⚠ **So the client address still arrives as the last entry,
+  as on `run.app` ([`0008`](0008-public-exposure-is-cloud-run-in-tokyo.md)), and forging leading
+  entries does not escape the limit.** One run, one client.
 
 ## Rejected
 
