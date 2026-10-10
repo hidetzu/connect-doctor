@@ -60,6 +60,9 @@ The threat model is [`docs/DESIGN.md`](docs/DESIGN.md) § 4; the rules are
 
 ## Status
 
+Live at **<https://connect-doctor.hidetzu.work>** (Cloud Run, Tokyo — [`docs/adr/0008`](docs/adr/0008-public-exposure-is-cloud-run-in-tokyo.md), [`docs/adr/0009`](docs/adr/0009-the-public-address-is-connect-doctor-hidetzu-work-through-cloud-run-domain-mapping.md)).
+To report a vulnerability, see [`SECURITY.md`](SECURITY.md).
+
 ⚠ **Under construction, one layer at a time.** What works today, and which check proves it, is
 [`docs/SPEC.md`](docs/SPEC.md) — ⚠ **and only that file.**
 

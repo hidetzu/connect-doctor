@@ -1,0 +1,12 @@
+# The Go module has no dependencies (docs/adr/0006); what ages is the CI actions and the
+# container base images.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
