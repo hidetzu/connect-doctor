@@ -20,6 +20,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -79,7 +80,10 @@ func start(t *testing.T) *instance {
 		t.Fatalf("build: %v", err)
 	}
 
-	cmd := exec.Command(bin, "-addr", "127.0.0.1:0", "-dns-server", dns.Addr())
+	// -trust-xff is the operator setting Cloud Run runs with; it lets each
+	// request below be its own client, so the per-client limits only bite in
+	// the test written for them (ratelimit_test.go). ⚠ The limits stay on.
+	cmd := exec.Command(bin, "-addr", "127.0.0.1:0", "-dns-server", dns.Addr(), "-trust-xff")
 	cmd.Env = append(os.Environ(), trustEnv...)
 	stdout, _ := cmd.StdoutPipe()
 	cmd.Stderr = io.Discard
@@ -108,30 +112,43 @@ func start(t *testing.T) *instance {
 	return nil
 }
 
-func (in *instance) api(t *testing.T, u string) (int, diag.Result, string) {
+// clientSeq gives every request a distinct client address unless a test
+// asks for a specific one.
+var clientSeq atomic.Int64
+
+func nextClient() string {
+	n := clientSeq.Add(1)
+	return fmt.Sprintf("198.18.%d.%d", (n>>8)&0xff, n&0xff)
+}
+
+// fetch sends GET path with X-Forwarded-For set to client.
+func (in *instance) fetch(t *testing.T, path, client string) (*http.Response, string) {
 	t.Helper()
-	resp, err := http.Get(in.base + "/api/check?url=" + url.QueryEscape(u))
+	req, _ := http.NewRequest(http.MethodGet, in.base+path, nil)
+	req.Header.Set("X-Forwarded-For", client)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(resp.Body)
+	return resp, string(b)
+}
+
+func (in *instance) api(t *testing.T, u string) (int, diag.Result, string) {
+	t.Helper()
+	resp, body := in.fetch(t, "/api/check?url="+url.QueryEscape(u), nextClient())
 	var res diag.Result
-	if err := json.Unmarshal(b, &res); err != nil {
-		t.Fatalf("%s: not JSON: %s", u, b)
+	if err := json.Unmarshal([]byte(body), &res); err != nil {
+		t.Fatalf("%s: not JSON: %s", u, body)
 	}
-	return resp.StatusCode, res, string(b)
+	return resp.StatusCode, res, body
 }
 
 func (in *instance) page(t *testing.T, path string) string {
 	t.Helper()
-	resp, err := http.Get(in.base + path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer resp.Body.Close()
-	b, _ := io.ReadAll(resp.Body)
-	return string(b)
+	_, body := in.fetch(t, path, nextClient())
+	return body
 }
 
 func ladder(res diag.Result) string {

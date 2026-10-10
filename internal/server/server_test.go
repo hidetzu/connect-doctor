@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -39,9 +40,18 @@ func (r blockingResolver) LookupNetIP(ctx context.Context, _, _ string) ([]netip
 }
 
 func get(t *testing.T, h http.Handler, target string) (*http.Response, string) {
+	return getFrom(t, h, target, "")
+}
+
+// getFrom sends the request with an X-Forwarded-For header (when xff is set).
+func getFrom(t *testing.T, h http.Handler, target, xff string) (*http.Response, string) {
 	t.Helper()
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, target, nil))
+	req := httptest.NewRequest(http.MethodGet, target, nil)
+	if xff != "" {
+		req.Header.Set("X-Forwarded-For", xff)
+	}
+	h.ServeHTTP(rec, req)
 	b, _ := io.ReadAll(rec.Result().Body)
 	return rec.Result(), string(b)
 }
@@ -159,18 +169,91 @@ func TestLogsCarryNoQueryString(t *testing.T) {
 // hidetzu/connect-doctor#26 AC 3: the production bound, not a test-sized one.
 func TestProductionConcurrencyBound(t *testing.T) {
 	r := blockingResolver{entered: make(chan struct{}), release: make(chan struct{})}
-	s := New(&diag.Checker{Resolver: r, Dial: pipeDial}, log.New(io.Discard, "", 0))
+	s := New(&diag.Checker{Resolver: r, Dial: pipeDial}, log.New(io.Discard, "", 0), Options{TrustXFF: true})
 	h := s.Handler()
 	var wg sync.WaitGroup
 	for i := 0; i < limits.ConcurrentChecks; i++ {
 		wg.Add(1)
-		go func() { defer wg.Done(); get(t, h, "/api/check?url=http://ok.test/") }()
+		xff := fmt.Sprintf("198.51.100.%d", i+1) // distinct clients: the per-client limit is not under test here
+		go func() { defer wg.Done(); getFrom(t, h, "/api/check?url=http://ok.test/", xff) }()
 		<-r.entered
 	}
-	resp, body := get(t, h, "/api/check?url=http://ok.test/")
+	resp, body := getFrom(t, h, "/api/check?url=http://ok.test/", "198.51.100.200")
 	if resp.StatusCode != http.StatusServiceUnavailable || !strings.Contains(body, "server.busy") {
 		t.Errorf("check %d: %d %s, want 503 server.busy", limits.ConcurrentChecks+1, resp.StatusCode, body)
 	}
 	close(r.release)
 	wg.Wait()
+}
+
+func limitedServer(logs io.Writer, trustXFF bool) http.Handler {
+	r := staticResolver{[]netip.Addr{netip.MustParseAddr("93.184.215.14")}}
+	return New(&diag.Checker{Resolver: r, Dial: pipeDial}, log.New(logs, "", 0), Options{TrustXFF: trustXFF}).Handler()
+}
+
+// hidetzu/connect-doctor#6: the burst, then 429 with Retry-After, and nothing
+// about the request beyond hostname and client prefix in the log.
+func TestClientLimitAnswers429(t *testing.T) {
+	var logs bytes.Buffer
+	h := limitedServer(&logs, true)
+	u := "/api/check?url=" + url.QueryEscape("http://ok.test/secret/path?token=SECRET123")
+	for i := 0; i < limits.ClientBurst; i++ {
+		if resp, body := getFrom(t, h, u, "203.0.113.7"); resp.StatusCode != 200 {
+			t.Fatalf("check %d: %d %s", i+1, resp.StatusCode, body)
+		}
+	}
+	resp, body := getFrom(t, h, u, "203.0.113.7")
+	if resp.StatusCode != http.StatusTooManyRequests || !strings.Contains(body, `"server.rate_limited"`) || resp.Header.Get("Retry-After") == "" {
+		t.Fatalf("over the burst: %d %q Retry-After=%q", resp.StatusCode, body, resp.Header.Get("Retry-After"))
+	}
+	line := ""
+	for _, l := range strings.Split(logs.String(), "\n") {
+		if strings.HasPrefix(l, "limit ") {
+			line = l
+		}
+	}
+	if !strings.Contains(line, "refused=burst") || !strings.Contains(line, "target=ok.test") || !strings.Contains(line, "client=203.0.113.0/24") {
+		t.Errorf("refusal log line: %q", line)
+	}
+	for _, leak := range []string{"SECRET123", "secret/path", "203.0.113.7"} {
+		if strings.Contains(logs.String(), leak) {
+			t.Errorf("log contains %q:\n%s", leak, logs.String())
+		}
+	}
+	// The page is limited too.
+	if resp, page := getFrom(t, h, "/?url=http://ok.test/", "203.0.113.7"); resp.StatusCode != http.StatusTooManyRequests || !strings.Contains(page, diag.Message("server.rate_limited")) {
+		t.Errorf("page over the limit: %d", resp.StatusCode)
+	}
+	// ⚠ Control: another client is unaffected, and the plain page is never limited.
+	if resp, _ := getFrom(t, h, u, "203.0.113.8"); resp.StatusCode != 200 {
+		t.Errorf("another client: %d", resp.StatusCode)
+	}
+	if resp, _ := getFrom(t, h, "/", "203.0.113.7"); resp.StatusCode != 200 {
+		t.Errorf("the form without a URL was limited: %d", resp.StatusCode)
+	}
+}
+
+// ⚠ Only the last X-Forwarded-For entry counts: forged leading entries do not
+// buy a fresh budget.
+func TestForgedForwardedForDoesNotResetTheLimit(t *testing.T) {
+	h := limitedServer(io.Discard, true)
+	u := "/api/check?url=http://ok.test/"
+	for i := 0; i < limits.ClientBurst; i++ {
+		getFrom(t, h, u, fmt.Sprintf("10.9.9.%d, 203.0.113.9", i))
+	}
+	if resp, _ := getFrom(t, h, u, "192.0.2.77, 203.0.113.9"); resp.StatusCode != http.StatusTooManyRequests {
+		t.Errorf("a forged first entry reset the limit: %d", resp.StatusCode)
+	}
+}
+
+// ⚠ Without -trust-xff the header is ignored entirely: the TCP peer is the client.
+func TestForwardedForIgnoredUnlessTrusted(t *testing.T) {
+	h := limitedServer(io.Discard, false)
+	u := "/api/check?url=http://ok.test/"
+	for i := 0; i < limits.ClientBurst; i++ {
+		getFrom(t, h, u, fmt.Sprintf("203.0.113.%d", i+1))
+	}
+	if resp, _ := getFrom(t, h, u, "203.0.113.99"); resp.StatusCode != http.StatusTooManyRequests {
+		t.Errorf("an untrusted X-Forwarded-For changed the client: %d", resp.StatusCode)
+	}
 }

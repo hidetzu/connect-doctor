@@ -165,7 +165,7 @@ func TestEveryCodeHasWords(t *testing.T) {
 	codes := []string{
 		target.CodeMissing, target.CodeMalformed, target.CodeUnsupportedScheme, target.CodeUnsupportedPort,
 		target.CodeCredentials, target.CodeLocalName, target.CodeRefusedAddress, target.CodeIDNNotImplemented,
-		"dns.not_found", "dns.timeout", "dns.server_failure", "dns.refused_address", "server.busy",
+		"dns.not_found", "dns.timeout", "dns.server_failure", "dns.refused_address", "server.busy", "server.rate_limited",
 		"http.timeout", "http.no_response", "http.malformed_response",
 		"tls.cert_expired", "tls.cert_untrusted", "tls.cert_name_mismatch", "tls.handshake_failed", "tls.timeout", "tls.not_tls",
 		"tcp.refused", "tcp.timeout", "tcp.unreachable", "tcp.no_route_family", "tcp.refused_address", "tcp.failed",
