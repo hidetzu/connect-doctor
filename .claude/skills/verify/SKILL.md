@@ -50,7 +50,7 @@ and accepted connections at listeners on `127.0.0.1:80/443`, and asserts zero fo
 ⚠ after a control that reached the public listener.**
 
 ⚠ **The namespace** (`e2e/main_test.go`): only `lo` and no default route, checked first; then
-`93.184.215.14` listening (TLS on :443 with a certificate from the test CA), `93.184.215.15` closed, `.21`–`.25` TLS cases (expired, untrusted CA, wrong name, plain HTTP, silence), `.26`/`.27` HTTP silence and close-without-response; `93.184.215.14` serves real HTTP on :80 and :443, answering by `Host` (200, 503, 10 MiB body, oversized headers), `8.8.4.4` routed into a dummy interface
+`93.184.215.14` listening (TLS on :443 with a certificate from the test CA), `93.184.215.15` closed, `.21`–`.25` TLS cases (expired, untrusted CA, wrong name, plain HTTP, silence), `.26`/`.27` HTTP silence and close-without-response; `93.184.215.14` serves real HTTP on :80 and :443, answering by `Host` (200, 503, 10 MiB body, oversized headers, and redirect cases: permitted, to `127.0.0.1`, to `localhost`, to `:8080`, a loop, relative, a slow chain), `8.8.4.4` routed into a dummy interface
 (silence), `9.9.9.9` an `unreachable` route, no IPv6 route. ⚠ **Documentation ranges are refused by
 policy, so they cannot stand in for a target.** ⚠ **The binary trusts the test CA only, through
 `SSL_CERT_FILE` / `SSL_CERT_DIR` — no product flag.**

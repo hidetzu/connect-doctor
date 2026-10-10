@@ -129,7 +129,8 @@ func setup() error {
 		return err
 	}
 	now := time.Now()
-	good, _ := ca.Valid("ok.test", "fallback.test", "status503.test", "bigbody.test", "bigheader.test", addrListen)
+	good, _ := ca.Valid("ok.test", "fallback.test", "status503.test", "bigbody.test", "bigheader.test",
+		"redir.test", "toloop.test", "tolocal.test", "toport.test", "spin.test", "rel.test", "slowhop.test", addrListen)
 	expired, _ := ca.Leaf([]string{"expired.test"}, now.Add(-48*time.Hour), now.Add(-24*time.Hour))
 	untrusted, _ := stranger.Valid("untrusted.test")
 	mismatch, _ := ca.Valid("other.test")
@@ -239,6 +240,30 @@ func serveHTTP(addr string, cert *tls.Certificate) error {
 		case "bigheader.test":
 			w.Header().Set("X-Big", strings.Repeat("a", 70<<10))
 			_, _ = w.Write([]byte("ok"))
+		// hidetzu/connect-doctor#5
+		case "redir.test":
+			http.Redirect(w, r, "https://ok.test/landed", http.StatusMovedPermanently)
+		case "toloop.test":
+			http.Redirect(w, r, "http://127.0.0.1/", http.StatusFound)
+		case "tolocal.test":
+			http.Redirect(w, r, "http://localhost/", http.StatusFound)
+		case "toport.test":
+			http.Redirect(w, r, "http://ok.test:8080/", http.StatusFound)
+		case "spin.test":
+			http.Redirect(w, r, "https://spin.test/", http.StatusFound)
+		case "rel.test":
+			if r.URL.Path == "/after" {
+				_, _ = w.Write([]byte("ok"))
+				return
+			}
+			w.Header().Set("Location", "/after")
+			w.WriteHeader(http.StatusFound)
+		case "slowhop.test":
+			// Each hop answers just inside limits.HTTP, so only the whole-check
+			// ceiling (limits.Check) can stop the chain.
+			time.Sleep(6 * time.Second)
+			w.Header().Set("Location", "/next"+strconv.Itoa(len(r.URL.Path)))
+			w.WriteHeader(http.StatusFound)
 		default:
 			_, _ = w.Write([]byte("ok"))
 		}
