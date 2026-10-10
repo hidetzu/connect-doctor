@@ -362,3 +362,34 @@ func TestVantageChip(t *testing.T) {
 		t.Error("without -vantage the chip must name no place")
 	}
 }
+
+// hidetzu/connect-doctor#29: the icon is served as the favicon and inlined in
+// the header; the page still loads nothing from another host.
+func TestServiceIcon(t *testing.T) {
+	h := newTestServer(staticResolver{}, io.Discard, 1).Handler()
+	resp, body := get(t, h, "/favicon.svg")
+	if resp.StatusCode != 200 || resp.Header.Get("Content-Type") != "image/svg+xml" || !strings.HasPrefix(body, "<svg") {
+		t.Fatalf("/favicon.svg: %d %q %.20q", resp.StatusCode, resp.Header.Get("Content-Type"), body)
+	}
+	resp, page := get(t, h, "/")
+	if !strings.Contains(page, `<link rel="icon" href="/favicon.svg" type="image/svg+xml">`) {
+		t.Error("the page does not link the favicon")
+	}
+	if !strings.Contains(page, `<span class="brand"><span aria-hidden="true"><svg`) {
+		t.Error("the header does not show the icon before the name")
+	}
+	csp := resp.Header.Get("Content-Security-Policy")
+	for _, want := range []string{"default-src 'none'", "img-src 'self'"} {
+		if !strings.Contains(csp, want) {
+			t.Errorf("CSP %q lacks %q", csp, want)
+		}
+	}
+	if strings.Contains(csp, "script-src") || strings.Contains(csp, "*") {
+		t.Errorf("CSP widened beyond the favicon: %q", csp)
+	}
+	for _, ext := range []string{`src="http`, `href="http`} {
+		if strings.Contains(page, ext) {
+			t.Errorf("the page loads from another host (%s)", ext)
+		}
+	}
+}
