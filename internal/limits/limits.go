@@ -62,6 +62,11 @@ const (
 	// TrackedTargets bounds each target table's memory, like TrackedClients.
 	TrackedTargets = 10000
 
+	// CacheTTL is how long a result answers repeated checks of the same normalised
+	// URL without connecting again; CacheEntries bounds the cache (hidetzu/connect-doctor#28).
+	CacheTTL     = 30 * time.Second
+	CacheEntries = 1000
+
 	// TrackedClients bounds the limiter's memory; the least recently seen client is
 	// forgotten first.
 	TrackedClients = 10000

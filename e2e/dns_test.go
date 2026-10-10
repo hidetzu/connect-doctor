@@ -65,6 +65,7 @@ func start(t *testing.T) *instance {
 		"tolimited.test":  {Addrs: []netip.Addr{a(addrRedirToLimited)}},
 		"limited.test":    {Addrs: []netip.Addr{a(addrLimited)}},
 		"limited2.test":   {Addrs: []netip.Addr{a(addrLimited2)}},
+		"cached.test":     {Addrs: []netip.Addr{a(addrCached)}},
 		"share1.test":     {Addrs: []netip.Addr{a(addrShared)}},
 		"share2.test":     {Addrs: []netip.Addr{a(addrShared)}},
 		"share3.test":     {Addrs: []netip.Addr{a(addrShared)}},
@@ -149,6 +150,17 @@ func (in *instance) fetch(t *testing.T, path, client string) (*http.Response, st
 func (in *instance) api(t *testing.T, u string) (int, diag.Result, string) {
 	t.Helper()
 	resp, body := in.fetch(t, "/api/check?url="+url.QueryEscape(u), nextClient())
+	var res diag.Result
+	if err := json.Unmarshal([]byte(body), &res); err != nil {
+		t.Fatalf("%s: not JSON: %s", u, body)
+	}
+	return resp.StatusCode, res, body
+}
+
+// apiFresh is api with fresh=1 (the page's 再診断): the cache never answers it.
+func (in *instance) apiFresh(t *testing.T, u string) (int, diag.Result, string) {
+	t.Helper()
+	resp, body := in.fetch(t, "/api/check?fresh=1&url="+url.QueryEscape(u), nextClient())
 	var res diag.Result
 	if err := json.Unmarshal([]byte(body), &res); err != nil {
 		t.Fatalf("%s: not JSON: %s", u, body)

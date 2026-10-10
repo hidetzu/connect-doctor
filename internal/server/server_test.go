@@ -271,7 +271,8 @@ func TestTargetLimitAnswers429(t *testing.T) {
 	if c.Targets == nil {
 		t.Fatal("server.New left the Checker without a target limiter")
 	}
-	u := "/api/check?url=" + url.QueryEscape("http://victim.test/p?token=SECRET9")
+	// fresh=1 (再診断): the cache must not answer, and the target limit must still hold.
+	u := "/api/check?fresh=1&url=" + url.QueryEscape("http://victim.test/p?token=SECRET9")
 	for i := 0; i < limits.TargetHostBurst; i++ {
 		if resp, body := getFrom(t, h, u, fmt.Sprintf("198.51.100.%d", i+1)); resp.StatusCode != 200 {
 			t.Fatalf("check %d: %d %s", i+1, resp.StatusCode, body)
@@ -289,5 +290,41 @@ func TestTargetLimitAnswers429(t *testing.T) {
 		if strings.Contains(logs.String(), leak) {
 			t.Errorf("log contains %q", leak)
 		}
+	}
+}
+
+// countingDial counts connections.
+type countingDial struct{ n int }
+
+func (c *countingDial) dial(ctx context.Context, a netip.Addr, p uint16) (net.Conn, error) {
+	c.n++
+	return pipeDial(ctx, a, p)
+}
+
+// hidetzu/connect-doctor#28: a repeated check is answered from the cache
+// without connecting; 再診断 connects again.
+func TestRepeatedCheckIsAnsweredFromTheCache(t *testing.T) {
+	d := &countingDial{}
+	r := staticResolver{[]netip.Addr{netip.MustParseAddr("93.184.215.14")}}
+	h := New(&diag.Checker{Resolver: r, Dial: d.dial}, log.New(io.Discard, "", 0), Options{TrustXFF: true}).Handler()
+
+	_, first := getFrom(t, h, "/api/check?url=http://cache.test/", "198.51.100.1")
+	_, second := getFrom(t, h, "/api/check?url=HTTP://Cache.TEST/", "198.51.100.2")
+	if d.n != 1 {
+		t.Fatalf("connections after a repeat: %d, want 1", d.n)
+	}
+	var a, b diag.Result
+	_ = json.Unmarshal([]byte(first), &a)
+	_ = json.Unmarshal([]byte(second), &b)
+	if a.Cached || !b.Cached || !a.CheckedAt.Equal(b.CheckedAt) {
+		t.Errorf("first cached=%v, second cached=%v, checked_at %s vs %s", a.Cached, b.Cached, a.CheckedAt, b.CheckedAt)
+	}
+	_, page := getFrom(t, h, "/?url=http://cache.test/", "198.51.100.3")
+	if d.n != 1 || !strings.Contains(page, "秒前の診断結果です") || !strings.Contains(page, "fresh=1") {
+		t.Errorf("page from the cache: connections %d, age line or 再診断 link missing", d.n)
+	}
+	getFrom(t, h, "/api/check?fresh=1&url=http://cache.test/", "198.51.100.4")
+	if d.n != 2 {
+		t.Errorf("再診断 made %d connections in total, want 2", d.n)
 	}
 }

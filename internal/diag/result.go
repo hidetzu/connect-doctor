@@ -36,13 +36,16 @@ var Steps = []string{StepDNS, StepTCP, StepTLS, StepHTTP}
 // Result is the JSON API, and what the page renders (docs/adr/0006).
 // ⚠ Field names are a contract once the API ships.
 type Result struct {
-	URL              string     `json:"url,omitempty"`
-	ObservedFrom     string     `json:"observed_from"`
-	ObservedFromNote string     `json:"observed_from_note"`
-	CheckedAt        time.Time  `json:"checked_at"`
-	DurationMS       int64      `json:"duration_ms"`
-	Conclusion       Conclusion `json:"conclusion"`
-	Hops             []Hop      `json:"hops"`
+	URL              string    `json:"url,omitempty"`
+	ObservedFrom     string    `json:"observed_from"`
+	ObservedFromNote string    `json:"observed_from_note"`
+	CheckedAt        time.Time `json:"checked_at"`
+	// Cached is true when this result was answered from the cache without
+	// connecting again; CheckedAt is then the original check's time.
+	Cached     bool       `json:"cached,omitempty"`
+	DurationMS int64      `json:"duration_ms"`
+	Conclusion Conclusion `json:"conclusion"`
+	Hops       []Hop      `json:"hops"`
 
 	// RetryAfter is set when a target limit stopped the check (not in the JSON;
 	// the server turns it into a Retry-After header).
