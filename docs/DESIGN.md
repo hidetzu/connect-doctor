@@ -89,6 +89,7 @@ state, whether the user's own resolver agrees (§ 4 of [`PRODUCT.md`](PRODUCT.md
 | `tcp.no_route_family` | ⚠ **Every permitted address is IPv6 and our server has no IPv6 route** — ⚠ **our gap, not theirs** |
 | `tcp.refused_address` | ⚠ **`internal/dial`'s `Control` hook refused the address at the socket.** Status `refused`. ⚠ **Unreachable while the DNS step and the hook share one policy**; it exists so that, if they ever disagree, the answer is a refusal and never a connection |
 | `tcp.failed` | Any other dial error, ⚠ **with its raw text in the attempt's `error`** (`.claude/rules/go.md`) |
+| `server.target_rate_limited` | ⚠ **Not a target outcome: ConnectDoctor's per-destination budget refused the attempt** (hidetzu/connect-doctor#27). Recorded per attempt; another address may still connect. Status `refused` when it concludes |
 
 ⚠ **Multiple addresses**: tried in order (IPv4 first), ⚠ **each attempt recorded**. ⚠ **The step is
 `ok` if any attempt connects**, and the detail says which ones did not.
@@ -135,6 +136,7 @@ trust another CA, and no `InsecureSkipVerify`.** ⚠ **Tests give trust the way 
 | `http.malformed_response` | Bytes that are not an HTTP/1.x response, ⚠ **including response headers over the 64 KiB cap** |
 | `http.no_response` | ⚠ **The connection closed (or reset) after the request with not one response byte** — owner decision, hidetzu/connect-doctor#4: ⚠ **nothing arrived ≠ malformed** ([`evidence.md`](../.claude/rules/evidence.md)) |
 | `http.too_many_redirects` | ⚠ **Conclusion-level**: more than `limits.RedirectHops` redirects. No `failed_step` |
+| `server.target_rate_limited` | ⚠ **Conclusion-level** (also as `hops[N].code` when the hostname budget stops a hop before DNS): a per-target limit held ConnectDoctor back — at any hop, redirect targets included. `429` + `Retry-After`. ⚠ **Worded as ours, never the target's failure** |
 | `http.redirect_refused` | ⚠ **Conclusion-level**: hop N ≥ 2 was refused — at input (`hops[N-1].code` holds the `input.*` reason, every step skipped), at DNS, or at the socket. No `failed_step`; ⚠ **the summary names the hop and its reason** (owner decision, hidetzu/connect-doctor#5) |
 
 ⚠ **Redirects** (hidetzu/connect-doctor#5): only 301, 302, 303, 307 and 308 with a `Location` are

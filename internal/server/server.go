@@ -10,6 +10,7 @@ import (
 	"math"
 	"net/http"
 	"net/netip"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -46,6 +47,11 @@ type Options struct {
 // New returns a Server with the per-client limits on (hidetzu/connect-doctor#6).
 // ⚠ There is no way to construct a production Server without them.
 func New(c *diag.Checker, logger *log.Logger, opts Options) *Server {
+	if c.Targets == nil {
+		// ⚠ The per-target limits protect the sites being checked; a production
+		// server never runs without them (hidetzu/connect-doctor#27).
+		c.Targets = ratelimit.NewTargets(nil)
+	}
 	s := newWithSlots(c, logger, limits.ConcurrentChecks)
 	s.limiter = ratelimit.New(nil)
 	s.trustXFF = opts.TrustXFF
@@ -120,8 +126,12 @@ func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 	s.release()
 
 	status := http.StatusOK
-	if strings.HasPrefix(res.Conclusion.Code, "input.") {
+	switch {
+	case strings.HasPrefix(res.Conclusion.Code, "input."):
 		status = http.StatusBadRequest
+	case res.Conclusion.Code == diag.CodeTargetLimited:
+		status = http.StatusTooManyRequests
+		s.targetLimited(w, r, res)
 	}
 	w.WriteHeader(status)
 	enc := json.NewEncoder(w)
@@ -155,6 +165,10 @@ func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
 			res := s.checker.Check(r.Context(), d.Input)
 			s.release()
 			d.Result = &res
+			if res.Conclusion.Code == diag.CodeTargetLimited {
+				s.targetLimited(w, r, res)
+				w.WriteHeader(http.StatusTooManyRequests)
+			}
 		default:
 			d.Busy = diag.Message("server.busy")
 			w.WriteHeader(http.StatusServiceUnavailable)
@@ -186,6 +200,27 @@ func (s *Server) admit(w http.ResponseWriter, r *http.Request, rawURL string) (r
 	}
 	s.log.Printf("limit refused=%s target=%s client=%s refused_total=%d", d.Reason, host, ratelimit.LogPrefix(addr), s.limiter.Refused()[d.Reason])
 	return d, false
+}
+
+// targetLimited sets Retry-After and writes the one log line a target-limit
+// refusal gets: the hostname of the hop that was held back and the client
+// prefix (docs/adr/0010).
+func (s *Server) targetLimited(w http.ResponseWriter, r *http.Request, res diag.Result) {
+	w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(max(res.RetryAfter, time.Second).Seconds()))))
+	host := "-"
+	for _, h := range res.Hops {
+		limited := h.Code == diag.CodeTargetLimited
+		for _, st := range h.Steps {
+			limited = limited || st.Code == diag.CodeTargetLimited
+		}
+		if limited {
+			if u, err := url.Parse(h.URL); err == nil && u.Hostname() != "" {
+				host = u.Hostname()
+			}
+			break
+		}
+	}
+	s.log.Printf("limit refused=target target=%s client=%s", host, ratelimit.LogPrefix(s.clientAddr(r)))
 }
 
 // clientAddr is the address the limits key on.

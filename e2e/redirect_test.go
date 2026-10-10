@@ -57,9 +57,9 @@ func TestRedirectRefusedBeforeResolving(t *testing.T) {
 // AC 4 and 5.
 func TestRedirectLoopAndRelative(t *testing.T) {
 	in := start(t)
-	_, res, _ := in.api(t, "https://spin.test/")
+	_, res, _ := in.api(t, "https://spin-a.test/")
 	if res.Conclusion.Code != "http.too_many_redirects" || len(res.Hops) != limits.RedirectHops+1 {
-		t.Errorf("spin.test: %+v, %d hops", res.Conclusion, len(res.Hops))
+		t.Errorf("spin-a.test: %+v, %d hops", res.Conclusion, len(res.Hops))
 	}
 	_, res, _ = in.api(t, "https://rel.test/")
 	if len(res.Hops) != 2 || res.Hops[1].URL != "https://rel.test/after" || res.Conclusion.Status != diag.ConclusionOK {
@@ -71,13 +71,13 @@ func TestRedirectLoopAndRelative(t *testing.T) {
 func TestRedirectChainRespectsTheCeiling(t *testing.T) {
 	in := start(t)
 	begin := time.Now()
-	_, res, _ := in.api(t, "https://slowhop.test/")
+	_, res, _ := in.api(t, "https://slowhop-a.test/")
 	took := time.Since(begin)
 	if took > limits.Check+2*time.Second {
 		t.Errorf("the check took %s, over the %s ceiling", took, limits.Check)
 	}
 	if res.Conclusion.Status != diag.ConclusionFailed || !strings.HasSuffix(res.Conclusion.Code, ".timeout") {
-		t.Errorf("slowhop.test: %+v after %d hops", res.Conclusion, len(res.Hops))
+		t.Errorf("slowhop-a.test: %+v after %d hops", res.Conclusion, len(res.Hops))
 	}
 }
 
