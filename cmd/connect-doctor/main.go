@@ -20,9 +20,12 @@ import (
 )
 
 func main() {
-	addr := flag.String("addr", "127.0.0.1:8080", "listen address (port 0 picks a free one)")
+	addr := flag.String("addr", "127.0.0.1:8080", "listen address (port 0 picks a free one); when not given and $PORT is set, 0.0.0.0:$PORT (Cloud Run)")
 	dnsServer := flag.String("dns-server", "", "resolver to use, host:port (default: the system's resolvers)")
 	flag.Parse()
+	addrGiven := false
+	flag.Visit(func(f *flag.Flag) { addrGiven = addrGiven || f.Name == "addr" })
+	listen := listenAddr(addrGiven, *addr, os.Getenv("PORT"))
 
 	logger := log.New(os.Stderr, "connect-doctor: ", log.LstdFlags)
 
@@ -41,7 +44,7 @@ func main() {
 		}
 	}
 
-	ln, err := net.Listen("tcp", *addr)
+	ln, err := net.Listen("tcp", listen)
 	if err != nil {
 		logger.Fatal(err)
 	}
@@ -63,4 +66,14 @@ func main() {
 	if err := srv.Serve(ln); !errors.Is(err, http.ErrServerClosed) {
 		logger.Fatal(err)
 	}
+}
+
+// listenAddr decides where to listen. An explicit -addr always wins; without
+// one, Cloud Run's PORT means every interface on that port
+// (docs/adr/0008); otherwise the loopback default.
+func listenAddr(addrGiven bool, addr, port string) string {
+	if !addrGiven && port != "" {
+		return net.JoinHostPort("0.0.0.0", port)
+	}
+	return addr
 }

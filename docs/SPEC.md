@@ -80,9 +80,15 @@ built, how many runs, which percentile.
 
 ⚠ **A number without those is deleted, not corrected.**
 
-⚠ **Conditions for the row below**: 2026-10-10, go1.26.2 linux/amd64, pure-Go resolver
-(`PreferGo: true`), one run each, against the developer machine's configured recursive resolver.
+⚠ **Conditions**: 2026-10-10. Rows marked *dev* ran on the developer machine (go1.26.2 linux/amd64,
+pure-Go resolver, its configured recursive resolver). Rows marked *Cloud Run* ran against the
+deployed service `connect-doctor` in `asia-northeast1`, revision `connect-doctor-00001`, image
+built from `d40006c` ([`adr/0008`](adr/0008-public-exposure-is-cloud-run-in-tokyo.md),
+[`DEPLOY.md`](DEPLOY.md)). One run each.
 
 | What was measured | Value | When | Under what conditions |
 |---|---|---|---|
-| External tier: our DNS step vs `getent ahosts` for `example.com`, `www.cloudflare.com`, `github.com`, `does-not-exist.example.com` | Same address set for all four names; the last `dns.not_found` on both | 2026-10-10 | Above. ⚠ **Four names, one machine, one run — a sanity record, not a claim about resolvers in general** |
+| *dev* — External tier: our DNS step vs `getent ahosts` for `example.com`, `www.cloudflare.com`, `github.com`, `does-not-exist.example.com` | Same address set for all four names; the last `dns.not_found` on both | 2026-10-10 | Above. ⚠ **Four names, one machine, one run — a sanity record, not a claim about resolvers in general** |
+| *Cloud Run* — IPv6 egress | Present: `ipv6.google.com` (IPv6-only) diagnosed `ok` on all four layers | 2026-10-10 | Above |
+| *Cloud Run* — where the client address arrives | Last entry of `X-Forwarded-For` (earlier entries are client-supplied); `Forwarded: for=` unaffected by forgery | 2026-10-10 | Above; throwaway echo service, since deleted |
+| *Cloud Run* — egress per check | ≈ 4.2 KB, ≤ 5.3 KB, checking `https://example.com` | 2026-10-10 | Above; Cloud Monitoring `sent_bytes_count`, `kind=internet`; ⚠ the batch, its size and why the bound is a range are in [`adr/0008`](adr/0008-public-exposure-is-cloud-run-in-tokyo.md) |
