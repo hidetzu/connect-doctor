@@ -70,8 +70,7 @@ func TestHTTPTimeoutIsBounded(t *testing.T) {
 	if res.Conclusion.Code != "http.timeout" {
 		t.Errorf("httpsilent.test: %+v", res.Conclusion)
 	}
-	// limits.HTTP is 8 s.
-	if took < 7*time.Second || took > 12*time.Second {
-		t.Errorf("httpsilent.test took %s, want about 8 s", took)
+	if took < limits.HTTP-time.Second || took > limits.HTTP+3*time.Second {
+		t.Errorf("httpsilent.test took %s, want about %s", took, limits.HTTP)
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/hidetzu/connect-doctor/internal/diag"
+	"github.com/hidetzu/connect-doctor/internal/limits"
 )
 
 // hidetzu/connect-doctor#3, AC 1–3.
@@ -65,8 +66,7 @@ func TestTLSTimeoutIsBounded(t *testing.T) {
 	if res.Conclusion.Code != "tls.timeout" || res.Hops[0].Steps[1].Status != diag.StatusOK {
 		t.Errorf("silent.test: %+v", res.Conclusion)
 	}
-	// limits.TLS is 5 s.
-	if took < 4*time.Second || took > 9*time.Second {
-		t.Errorf("silent.test took %s, want about 5 s", took)
+	if took < limits.TLS-time.Second || took > limits.TLS+3*time.Second {
+		t.Errorf("silent.test took %s, want about %s", took, limits.TLS)
 	}
 }
