@@ -25,6 +25,17 @@ import (
 //go:embed templates/page.html
 var templates embed.FS
 
+// icon is the service icon (hidetzu/connect-doctor#29, candidate A): four
+// steps in a row, the last a ring. Served as the favicon and inlined in the
+// header, so the page still loads nothing from another host.
+//
+//go:embed static/icon.svg
+var icon []byte
+
+// pageCSP: the page runs no script and loads nothing from elsewhere; the only
+// image it fetches is its own favicon.
+const pageCSP = "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
+
 // Server is the HTTP front of a diag.Checker.
 type Server struct {
 	checker  *diag.Checker
@@ -77,6 +88,8 @@ func newWithSlots(c *diag.Checker, logger *log.Logger, slots int) *Server {
 		"state":     diag.State,
 		"headline":  diag.Headline,
 		"cause":     diag.Cause,
+		// ⚠ Our own embedded file, never request data.
+		"icon": func() template.HTML { return template.HTML(icon) },
 	}).ParseFS(templates, "templates/page.html"))
 	return &Server{checker: c, log: logger, page: page, slots: make(chan struct{}, slots)}
 }
@@ -89,6 +102,7 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", s.handlePage)
 	mux.HandleFunc("GET /api/check", s.handleAPI)
+	mux.HandleFunc("GET /favicon.svg", handleIcon)
 	return s.logRequests(mux)
 }
 
@@ -168,8 +182,7 @@ type pageData struct {
 func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
-	// The page runs no script and loads nothing from elsewhere.
-	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
+	w.Header().Set("Content-Security-Policy", pageCSP)
 
 	d := pageData{Note: diag.ObservedFromNote, Vantage: s.vantage}
 	if _, asked := r.URL.Query()["url"]; asked {
@@ -290,6 +303,13 @@ func refusalStatus(d ratelimit.Decision) int {
 		return http.StatusServiceUnavailable
 	}
 	return http.StatusTooManyRequests
+}
+
+func handleIcon(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "image/svg+xml")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'")
+	_, _ = w.Write(icon)
 }
 
 // glyph is the mark inside a step's node.
