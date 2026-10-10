@@ -136,7 +136,7 @@ func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		var e apiError
 		e.Error.Code = refusalCode(d)
-		e.Error.Message = diag.Message(e.Error.Code)
+		e.Error.Message = refusalMessage(d)
 		w.WriteHeader(refusalStatus(d))
 		_ = json.NewEncoder(w).Encode(e)
 		return
@@ -193,7 +193,7 @@ func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
 		dec, ok := s.admit(w, r, d.Input)
 		defer dec.Done()
 		if !ok {
-			d.Busy = diag.Message(refusalCode(dec))
+			d.Busy = refusalMessage(dec)
 			w.WriteHeader(refusalStatus(dec))
 		} else if res, hit := s.cached(r, d.Input); hit {
 			d.Result = &res
@@ -228,7 +228,7 @@ func (s *Server) admit(w http.ResponseWriter, r *http.Request, rawURL string) (r
 	if d.Allowed() {
 		return d, true
 	}
-	w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(d.RetryAfter.Seconds()))))
+	w.Header().Set("Retry-After", strconv.Itoa(retryAfterSeconds(d)))
 	// ⚠ Hostname and client prefix only, and only a hostname target.Parse
 	// accepted: never a path, a query, a full address, or a refused address
 	// (docs/adr/0010, .claude/rules/security.md § 5).
@@ -292,6 +292,20 @@ func (s *Server) clientAddr(r *http.Request) netip.Addr {
 		return ap.Addr()
 	}
 	return netip.IPv6Unspecified()
+}
+
+// retryAfterSeconds is the Retry-After value, and the seconds the page shows.
+func retryAfterSeconds(d ratelimit.Decision) int {
+	return int(math.Ceil(d.RetryAfter.Seconds()))
+}
+
+// refusalMessage names the visitor's own limit and the wait
+// (hidetzu/connect-doctor#43); the global breaker keeps the busy sentence.
+func refusalMessage(d ratelimit.Decision) string {
+	if d.Reason == ratelimit.ReasonGlobal {
+		return diag.Message("server.busy")
+	}
+	return diag.RateLimited(string(d.Reason), retryAfterSeconds(d))
 }
 
 func refusalCode(d ratelimit.Decision) string {

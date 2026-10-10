@@ -31,6 +31,11 @@ func TestClientRateLimitThroughTheBinary(t *testing.T) {
 	if ra, err := strconv.Atoi(resp.Header.Get("Retry-After")); err != nil || ra < 1 || ra > int(limits.ClientRefill.Seconds()) {
 		t.Errorf("Retry-After = %q", resp.Header.Get("Retry-After"))
 	}
+	// hidetzu/connect-doctor#43: the page names the visitor's limit and the wait.
+	_, page := in.fetch(t, "/?url=nxpage.test", "203.0.113.50")
+	if !strings.Contains(page, "あなたの診断回数が上限に達しました") || !strings.Contains(page, " 秒で、もう一度診断できます") {
+		t.Error("the page does not say it is the visitor's limit and how long to wait")
+	}
 	// ⚠ Control: a different client is served.
 	if resp, _ := in.fetch(t, path(9), "203.0.113.51"); resp.StatusCode != http.StatusOK {
 		t.Errorf("another client: %d", resp.StatusCode)
