@@ -12,6 +12,8 @@ import (
 	"net/http/httptest"
 	"net/netip"
 	"net/url"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -387,9 +389,27 @@ func TestServiceIcon(t *testing.T) {
 	if strings.Contains(csp, "script-src") || strings.Contains(csp, "*") {
 		t.Errorf("CSP widened beyond the favicon: %q", csp)
 	}
-	for _, ext := range []string{`src="http`, `href="http`} {
-		if strings.Contains(page, ext) {
-			t.Errorf("the page loads from another host (%s)", ext)
+	// ⚠ What the page LOADS: src attributes and <link> elements. A plain <a href>
+	// to the source (hidetzu/connect-doctor#41) is navigation, not a load.
+	if strings.Contains(page, `src="http`) || regexp.MustCompile(`<link [^>]*href="http`).MatchString(page) {
+		t.Error("the page loads something from another host")
+	}
+}
+
+// hidetzu/connect-doctor#41: every page says what ConnectDoctor does, what
+// happens to the URL, and where the source is.
+func TestTaglineAndFooter(t *testing.T) {
+	h := newTestServer(staticResolver{[]netip.Addr{netip.MustParseAddr("93.184.215.14")}}, io.Discard, 1).Handler()
+	for _, path := range []string{"/", "/?url=http://ok.test/", "/?url=http://127.0.0.1/"} {
+		_, page := get(t, h, path)
+		for _, want := range []string{diag.Tagline, diag.PrivacyNote(), `<a href="` + diag.SourceURL + `">`} {
+			if !strings.Contains(page, want) {
+				t.Errorf("%s does not contain %q", path, want)
+			}
 		}
+	}
+	// ⚠ The sentence states the cache's real duration.
+	if !strings.Contains(diag.PrivacyNote(), strconv.Itoa(int(limits.CacheTTL.Seconds()))+"秒") {
+		t.Errorf("privacy note %q does not match limits.CacheTTL", diag.PrivacyNote())
 	}
 }

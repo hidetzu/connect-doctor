@@ -177,6 +177,9 @@ type pageData struct {
 	Busy    string
 	Age     int // seconds since a cached result was checked
 	Vantage string
+	Tagline string
+	Privacy string
+	Source  string
 }
 
 func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
@@ -184,7 +187,7 @@ func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Security-Policy", pageCSP)
 
-	d := pageData{Note: diag.ObservedFromNote, Vantage: s.vantage}
+	d := pageData{Note: diag.ObservedFromNote, Vantage: s.vantage, Tagline: diag.Tagline, Privacy: diag.PrivacyNote(), Source: diag.SourceURL}
 	if _, asked := r.URL.Query()["url"]; asked {
 		d.Input = r.URL.Query().Get("url")
 		dec, ok := s.admit(w, r, d.Input)

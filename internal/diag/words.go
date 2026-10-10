@@ -3,6 +3,8 @@ package diag
 import (
 	"strconv"
 	"strings"
+
+	"github.com/hidetzu/connect-doctor/internal/limits"
 )
 
 // Every sentence a human reads lives in this file (.claude/rules/go.md,
@@ -238,4 +240,21 @@ func lastStatusCode(r Result) int {
 		}
 	}
 	return 0
+}
+
+// ---- What the page says about itself (hidetzu/connect-doctor#41) ----
+
+// Tagline is the owner's one-line description, under the header.
+const Tagline = "URLがなぜ繋がらないのかを、DNS → TCP → TLS → HTTP の順に調べて答えます。"
+
+// SourceURL is where the code lives.
+const SourceURL = "https://github.com/hidetzu/connect-doctor"
+
+// PrivacyNote says what happens to a URL, and ⚠ only what the code does: no
+// storage, the result cache (limits.CacheTTL, hidetzu/connect-doctor#28), and
+// the hostname logged when a limit refuses (docs/adr/0010). ⚠ Change the
+// code, change this sentence.
+func PrivacyNote() string {
+	return "入力したURLは保存しません。同じURLの再表示のために結果を" + strconv.Itoa(int(limits.CacheTTL.Seconds())) +
+		"秒だけメモリに保持し、利用回数の制限に掛かったときだけホスト名を記録します。"
 }
