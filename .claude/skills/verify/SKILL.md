@@ -12,9 +12,9 @@ names the entry points.** ⚠ **The checks themselves are the tests; this file n
 
 | Tier | Command | What separates it | ⚠ Leaves the machine? |
 |---|---|---|---|
-| **Fast** | `scripts/verify.sh fast` | No binary, no sockets except the fake resolver's loopback: gofmt, `go vet` (all tags), `docs-check.mjs`, unit tests incl. the source conformance checks | ⚠ **No** |
+| **Fast** | `scripts/verify.sh fast` | No binary; ⚠ **loopback sockets only** (the fake resolver, and `internal/tlstest`'s TLS servers — ⚠ a real socket because `net.Pipe` deadlocks a failing TLS handshake): gofmt, `go vet` (all tags), `docs-check.mjs`, unit tests incl. the source conformance checks | ⚠ **No** |
 | **Final gate** | `scripts/verify.sh final` | ⚠ **Builds the binary from this tree, runs it, talks HTTP to it**, resolving through `internal/dnstest` on loopback, ⚠ **inside an empty network namespace** (`unshare -rn`) with listeners on permitted addresses | ⚠ **No — and cannot: the namespace has no route out**, and `e2e/main_test.go` refuses to run anywhere else |
-| **External** | `scripts/verify.sh external` | ⚠ **The other end is a real resolver and real zones.** Records ours beside `getent`; asserts only that our step ran | ⚠ **Yes — DNS, and a TCP handshake to the resolved address (no bytes sent).** ⚠ **Never on a PR** |
+| **External** | `scripts/verify.sh external` | ⚠ **The other end is a real resolver and real zones.** Records ours beside `getent`; asserts only that our step ran | ⚠ **Yes — DNS, and TCP and TLS handshakes with the resolved address (no request sent).** ⚠ **Never on a PR** |
 
 **Partial runs** (every tier):
 
@@ -50,9 +50,10 @@ and accepted connections at listeners on `127.0.0.1:80/443`, and asserts zero fo
 ⚠ after a control that reached the public listener.**
 
 ⚠ **The namespace** (`e2e/main_test.go`): only `lo` and no default route, checked first; then
-`93.184.215.14` listening, `93.184.215.15` closed, `8.8.4.4` routed into a dummy interface
+`93.184.215.14` listening (TLS on :443 with a certificate from the test CA), `93.184.215.15` closed, `.21`–`.25` TLS cases (expired, untrusted CA, wrong name, plain HTTP, silence), `8.8.4.4` routed into a dummy interface
 (silence), `9.9.9.9` an `unreachable` route, no IPv6 route. ⚠ **Documentation ranges are refused by
-policy, so they cannot stand in for a target.**
+policy, so they cannot stand in for a target.** ⚠ **The binary trusts the test CA only, through
+`SSL_CERT_FILE` / `SSL_CERT_DIR` — no product flag.**
 ⚠ **Needs unprivileged user namespaces.** ⚠ **Where `unshare -rn` fails, the runner says
 NOT-VERIFIED and exits non-zero** — ⚠ **never a skipped PASS.**
 
