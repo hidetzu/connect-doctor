@@ -63,3 +63,16 @@ curl -s "$URL/api/check?url=http://metadata.google.internal/" # must be refused
 gcloud projects get-iam-policy $PROJECT --flatten=bindings --filter="bindings.members:serviceAccount:$SA@" \
   --format='value(bindings.role)'
 ```
+
+## 4. Custom domain (once; [`adr/0009`](adr/0009-the-public-address-is-connect-doctor-hidetzu-work-through-cloud-run-domain-mapping.md))
+
+```sh
+gcloud components install beta
+gcloud domains list-user-verified           # hidetzu.work must be listed
+gcloud beta run domain-mappings create --service connect-doctor \
+  --domain connect-doctor.hidetzu.work --region $REGION --project $PROJECT
+# ⚠ Then, in Cloudflare: CNAME connect-doctor -> ghs.googlehosted.com, proxy OFF (DNS only).
+# ⚠ The certificate is issued after the record resolves: about 15 minutes, up to 24 hours.
+gcloud beta run domain-mappings describe --domain connect-doctor.hidetzu.work \
+  --region $REGION --project $PROJECT --format='yaml(status.conditions)'
+```
