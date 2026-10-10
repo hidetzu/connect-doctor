@@ -1,6 +1,9 @@
 package diag
 
-import "strings"
+import (
+	"strconv"
+	"strings"
+)
 
 // Every sentence a human reads lives in this file (.claude/rules/go.md,
 // CLAUDE.md § 4). Templates and handlers render; they do not compose.
@@ -42,6 +45,10 @@ var messages = map[string]string{
 	"tls.timeout":            "TCP接続はできましたが、TLSの応答が時間内に返りませんでした。",
 	"tls.not_tls":            "このポートはTLSではない応答を返しました。https:// ではなく http:// で待ち受けている可能性があります。",
 
+	"http.timeout":            "TLS（またはTCP）までは成功しましたが、HTTPリクエストへの応答が時間内に返りませんでした。サーバのアプリケーションが応答していない可能性があります。",
+	"http.no_response":        "リクエストを送りましたが、サーバは何も返さずに接続を閉じました。サーバのアプリケーションやリバースプロキシを確認してください。",
+	"http.malformed_response": "サーバの応答がHTTPとして読めませんでした（形式が正しくないか、ヘッダが大きすぎます）。",
+
 	"server.busy": "ただいま混み合っています。しばらくしてから、もう一度お試しください。",
 }
 
@@ -68,8 +75,6 @@ var statusLabels = map[Status]string{
 // StatusLabel returns the word for s.
 func StatusLabel(s Status) string { return statusLabels[s] }
 
-const notImplementedMessage = "このステップはまだ実装されていません。"
-
 func summaryRefusedInput(code string) string {
 	return "ConnectDoctorはこのURLを診断しませんでした。" + Message(code)
 }
@@ -92,4 +97,28 @@ func summaryIncomplete(lastOK string, notImplemented []string) string {
 		return gap
 	}
 	return "ConnectDoctorのサーバからは、" + stepNames[lastOK] + "に成功しました。" + gap
+}
+
+// summaryOK says what the status means. ⚠ Owner decision
+// (hidetzu/connect-doctor#4): any status is a successful connection; the
+// sentence says what the server answered.
+func summaryOK(code int, https bool) string {
+	layers := "DNS・TCP・TLS・HTTP"
+	if !https {
+		layers = "DNS・TCP・HTTP"
+	}
+	head := "ConnectDoctorのサーバからは、" + layers + "のすべてに成功しました。"
+	st := "サーバはステータス" + strconv.Itoa(code)
+	var body string
+	switch {
+	case code >= 500:
+		body = "接続はできていますが、" + st + "を返しました。サーバ側（アプリケーション）でエラーが起きています。"
+	case code >= 400:
+		body = "接続はできていますが、" + st + "を返しました。URLのパスや、アクセス権限を確認してください。"
+	case code >= 300:
+		body = st + "（リダイレクト）を返しました。"
+	default:
+		body = st + "を返しました。"
+	}
+	return head + body + "あなたの環境から繋がらない場合は、あなた側のネットワーク（プロキシ・DNS・ファイアウォールなど）を確認してください。"
 }

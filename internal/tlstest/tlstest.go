@@ -8,6 +8,7 @@
 package tlstest
 
 import (
+	"bufio"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -141,3 +142,58 @@ func Pipe(cert *tls.Certificate, raw []byte) net.Conn {
 	}
 	return client
 }
+
+// OK200 is a minimal complete HTTP/1.1 response.
+var OK200 = []byte("HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok")
+
+// Serve returns the client end of a loopback TCP connection whose server end
+// speaks TLS with cert if the client starts a TLS handshake, or plain text
+// otherwise, and then answers the first request with response — or, for a
+// nil response, closes without answering.
+func Serve(cert *tls.Certificate, response []byte) net.Conn {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		panic(err)
+	}
+	go func() {
+		defer ln.Close()
+		raw, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer raw.Close()
+		br := bufio.NewReader(raw)
+		first, err := br.Peek(1)
+		if err != nil {
+			return
+		}
+		var c net.Conn = peeked{raw, br}
+		if first[0] == 0x16 { // TLS handshake record
+			s := tls.Server(c, &tls.Config{Certificates: []tls.Certificate{*cert}, NextProtos: []string{"http/1.1"}})
+			if s.Handshake() != nil {
+				return
+			}
+			c = s
+		}
+		buf := make([]byte, 4096)
+		_, _ = c.Read(buf) // the request
+		if response == nil {
+			return
+		}
+		_, _ = c.Write(response)
+		_, _ = c.Read(buf)
+	}()
+	client, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		panic(err)
+	}
+	return client
+}
+
+// peeked is a net.Conn that reads through a bufio.Reader that has peeked.
+type peeked struct {
+	net.Conn
+	r *bufio.Reader
+}
+
+func (p peeked) Read(b []byte) (int, error) { return p.r.Read(b) }

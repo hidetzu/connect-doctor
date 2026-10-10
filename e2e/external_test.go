@@ -1,7 +1,7 @@
 //go:build external
 
 // The external tier: the other end is a real recursive resolver, real zones
-// and real servers (TCP and TLS handshakes, no request sent) we did not write (.claude/rules/verification.md).
+// and real servers (TCP, TLS and one GET) we did not write (.claude/rules/verification.md).
 //
 // ⚠ It never asserts what the other side will return. It records what our
 // DNS step returned beside what this machine's own resolver (getent) returned
@@ -42,8 +42,12 @@ func TestExternalDNSAgainstSystemResolver(t *testing.T) {
 		}
 		slices.Sort(ours)
 		slices.Sort(theirs)
-		tcp, tls := res.Hops[0].Steps[1], res.Hops[0].Steps[2]
-		t.Logf("%-28s ours=%s/%s %v | getent %v | same set: %v | tcp=%s/%s | tls=%s/%s", name, dns.Status, dns.Code, ours, theirs, slices.Equal(ours, theirs), tcp.Status, tcp.Code, tls.Status, tls.Code)
+		tcp, tls, http := res.Hops[0].Steps[1], res.Hops[0].Steps[2], res.Hops[0].Steps[3]
+		status := 0
+		if http.Detail != nil {
+			status = http.Detail.StatusCode
+		}
+		t.Logf("%-28s ours=%s/%s %v | getent %v | same set: %v | tcp=%s/%s | tls=%s/%s | http=%s/%s %d | %s", name, dns.Status, dns.Code, ours, theirs, slices.Equal(ours, theirs), tcp.Status, tcp.Code, tls.Status, tls.Code, http.Status, http.Code, status, res.Conclusion.Status)
 		if dns.Status == "" {
 			t.Errorf("%s: our DNS step produced no status", name)
 		}

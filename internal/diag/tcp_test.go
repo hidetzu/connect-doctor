@@ -37,7 +37,7 @@ func (d *scriptedDial) dial(_ context.Context, a netip.Addr, _ uint16) (net.Conn
 	if err, ok := d.errs[a.String()]; ok {
 		return nil, err
 	}
-	return tlstest.Pipe(&validCert, nil), nil
+	return tlstest.Serve(&validCert, tlstest.OK200), nil
 }
 
 func checkTCP(addrs []string, errs map[string]error) (Result, *scriptedDial) {
@@ -100,7 +100,7 @@ func TestTCPSecondAddressConnects(t *testing.T) {
 	if len(a) != 2 || a[0].Outcome != "tcp.timeout" || a[1].Outcome != "ok" {
 		t.Errorf("attempts = %+v", a)
 	}
-	if res.Conclusion.Status != ConclusionIncomplete {
+	if res.Conclusion.Status != ConclusionOK {
 		t.Errorf("conclusion = %+v", res.Conclusion)
 	}
 }

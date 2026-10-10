@@ -14,14 +14,14 @@ import (
 func TestTLSOutcomesThroughTheBinary(t *testing.T) {
 	in := start(t)
 	cases := []struct{ url, ladder, code string }{
-		{"https://ok.test/", "dns=ok tcp=ok tls=ok http=not_implemented", ""},
-		{"https://" + addrListen + "/", "dns=not_applicable tcp=ok tls=ok http=not_implemented", ""},
+		{"https://ok.test/", "dns=ok tcp=ok tls=ok http=ok", ""},
+		{"https://" + addrListen + "/", "dns=not_applicable tcp=ok tls=ok http=ok", ""},
 		{"https://expired.test/", "dns=ok tcp=ok tls=failed http=skipped", "tls.cert_expired"},
 		{"https://untrusted.test/", "dns=ok tcp=ok tls=failed http=skipped", "tls.cert_untrusted"},
 		{"https://mismatch.test/", "dns=ok tcp=ok tls=failed http=skipped", "tls.cert_name_mismatch"},
 		{"https://plain.test/", "dns=ok tcp=ok tls=failed http=skipped", "tls.not_tls"},
 		// AC 3: never skipped for http://, even when TCP succeeded.
-		{"http://ok.test/", "dns=ok tcp=ok tls=not_applicable http=not_implemented", ""},
+		{"http://ok.test/", "dns=ok tcp=ok tls=not_applicable http=ok", ""},
 	}
 	for _, c := range cases {
 		_, res, _ := in.api(t, c.url)

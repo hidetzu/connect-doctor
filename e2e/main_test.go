@@ -6,8 +6,10 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -33,7 +35,15 @@ const (
 	addrMismatch  = "93.184.215.23" // valid, for another name
 	addrPlain     = "93.184.215.24" // plain HTTP on 443
 	addrSilent    = "93.184.215.25" // accepts, never speaks
+
+	// HTTP on :80.
+	addrHTTPSilent = "93.184.215.26" // reads the request, never answers
+	addrHTTPClose  = "93.184.215.27" // reads the request, closes without a byte
 )
+
+// lastRequest is what the most recent request to addrListen carried
+// (hidetzu/connect-doctor#4 AC 2).
+var lastRequest atomic.Pointer[http.Request]
 
 // trustEnv makes the binary under test trust the test CA and nothing else,
 // through the system root store (internal/tlstest). ⚠ No product flag.
@@ -92,6 +102,8 @@ func setup() error {
 		{"addr", "add", addrMismatch + "/32", "dev", "lo"},
 		{"addr", "add", addrPlain + "/32", "dev", "lo"},
 		{"addr", "add", addrSilent + "/32", "dev", "lo"},
+		{"addr", "add", addrHTTPSilent + "/32", "dev", "lo"},
+		{"addr", "add", addrHTTPClose + "/32", "dev", "lo"},
 		{"link", "add", "d0", "type", "dummy"},
 		{"link", "set", "d0", "up"},
 		{"route", "add", addrDrop + "/32", "dev", "d0"},
@@ -117,16 +129,16 @@ func setup() error {
 		return err
 	}
 	now := time.Now()
-	good, _ := ca.Valid("ok.test", "fallback.test", addrListen)
+	good, _ := ca.Valid("ok.test", "fallback.test", "status503.test", "bigbody.test", "bigheader.test", addrListen)
 	expired, _ := ca.Leaf([]string{"expired.test"}, now.Add(-48*time.Hour), now.Add(-24*time.Hour))
 	untrusted, _ := stranger.Valid("untrusted.test")
 	mismatch, _ := ca.Valid("other.test")
 
-	if err := listen(addrListen+":80", &publicAccepts, nil); err != nil {
+	if err := serveHTTP(addrListen, &good); err != nil {
 		return err
 	}
 	for addr, cert := range map[string]*tls.Certificate{
-		addrListen: &good, addrExpired: &expired, addrUntrusted: &untrusted, addrMismatch: &mismatch,
+		addrExpired: &expired, addrUntrusted: &untrusted, addrMismatch: &mismatch,
 	} {
 		if err := listen(addr+":443", &publicAccepts, cert); err != nil {
 			return err
@@ -136,6 +148,12 @@ func setup() error {
 		return err
 	}
 	if err := listenRaw(addrSilent+":443", nil); err != nil {
+		return err
+	}
+	if err := listenRaw(addrHTTPSilent+":80", nil); err != nil {
+		return err
+	}
+	if err := listenClose(addrHTTPClose + ":80"); err != nil {
 		return err
 	}
 	for _, a := range []string{"127.0.0.1:80", "127.0.0.1:443"} {
@@ -200,6 +218,75 @@ func listenRaw(addr string, raw []byte) error {
 					_, _ = c.Write(raw)
 				}
 				_, _ = c.Read(buf)
+			}()
+		}
+	}()
+	return nil
+}
+
+// serveHTTP runs a real HTTP server on addr:80 and, with cert, on addr:443,
+// answering by Host. ⚠ HTTP/1.1 only, as ConnectDoctor offers (docs/adr/0005).
+func serveHTTP(addr string, cert *tls.Certificate) error {
+	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		lastRequest.Store(r)
+		host, _, _ := strings.Cut(r.Host, ":")
+		switch host {
+		case "status503.test":
+			w.WriteHeader(http.StatusServiceUnavailable)
+		case "bigbody.test":
+			w.Header().Set("Content-Length", strconv.Itoa(10<<20))
+			_, _ = w.Write([]byte(strings.Repeat("x", 10<<20)))
+		case "bigheader.test":
+			w.Header().Set("X-Big", strings.Repeat("a", 70<<10))
+			_, _ = w.Write([]byte("ok"))
+		default:
+			_, _ = w.Write([]byte("ok"))
+		}
+	})
+	plain, err := net.Listen("tcp", addr+":80")
+	if err != nil {
+		return err
+	}
+	secure, err := net.Listen("tcp", addr+":443")
+	if err != nil {
+		return err
+	}
+	go (&http.Server{Handler: h}).Serve(counting{plain, &publicAccepts})
+	tl := tls.NewListener(counting{secure, &publicAccepts}, &tls.Config{Certificates: []tls.Certificate{*cert}, NextProtos: []string{"http/1.1"}})
+	go (&http.Server{Handler: h}).Serve(tl)
+	return nil
+}
+
+// counting counts accepted connections.
+type counting struct {
+	net.Listener
+	n *atomic.Int32
+}
+
+func (c counting) Accept() (net.Conn, error) {
+	conn, err := c.Listener.Accept()
+	if err == nil {
+		c.n.Add(1)
+	}
+	return conn, err
+}
+
+// listenClose reads the request and closes without answering.
+func listenClose(addr string) error {
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return err
+	}
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				buf := make([]byte, 4096)
+				_, _ = c.Read(buf)
+				c.Close()
 			}()
 		}
 	}()

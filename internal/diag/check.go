@@ -96,11 +96,14 @@ func (c *Checker) Check(ctx context.Context, raw string) Result {
 				}
 			}
 			if t.Scheme == "http" || tls.Status == StatusOK {
-				http = notImplemented(StepHTTP)
+				s := now()
+				http = httpStep(ctx, conn, t.URL)
+				ms := now().Sub(s).Milliseconds()
+				http.DurationMS = &ms
+				http.Message = Message(http.Code)
 			}
 		}
 		if conn != nil {
-			// HTTP is not built yet; the connection carries nothing more.
 			conn.Close()
 		}
 	} else {
@@ -111,10 +114,6 @@ func (c *Checker) Check(ctx context.Context, raw string) Result {
 	res.Conclusion = conclude(res.Hops)
 	res.DurationMS = now().Sub(start).Milliseconds()
 	return res
-}
-
-func notImplemented(step string) Step {
-	return Step{Step: step, Status: StatusNotImplemented, Message: notImplementedMessage}
 }
 
 func skippedFrom(i int) []Step {
@@ -147,9 +146,7 @@ func conclude(hops []Hop) Conclusion {
 		// ⚠ Never ok while a layer was not checked (docs/DESIGN.md § 6).
 		return Conclusion{Status: ConclusionIncomplete, Summary: summaryIncomplete(lastOK, gaps)}
 	}
-	// Unreachable until every step is implemented; its sentence arrives with
-	// the HTTP step (hidetzu/connect-doctor#4).
-	return Conclusion{Status: ConclusionOK}
+	return Conclusion{Status: ConclusionOK, Summary: summaryOK(statusCode(hops), httpsHop(hops))}
 }
 
 // tlsHandshake adapts tlsStep's *tls.Conn to net.Conn without a typed nil.
@@ -159,4 +156,24 @@ func tlsHandshake(ctx context.Context, conn net.Conn, host string) (Step, net.Co
 		return st, nil
 	}
 	return st, tc
+}
+
+// statusCode is the HTTP status of the last hop.
+func statusCode(hops []Hop) int {
+	last := hops[len(hops)-1]
+	for _, s := range last.Steps {
+		if s.Step == StepHTTP && s.Detail != nil {
+			return s.Detail.StatusCode
+		}
+	}
+	return 0
+}
+
+func httpsHop(hops []Hop) bool {
+	for _, s := range hops[len(hops)-1].Steps {
+		if s.Step == StepTLS {
+			return s.Status != StatusNotApplicable
+		}
+	}
+	return false
 }

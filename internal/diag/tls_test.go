@@ -95,7 +95,9 @@ func TestTLSErrorClassification(t *testing.T) {
 
 func TestTLSFailureConcludes(t *testing.T) {
 	expired, _ := testCA.Leaf([]string{"example.com"}, time.Now().Add(-48*time.Hour), time.Now().Add(-24*time.Hour))
-	d := func(context.Context, netip.Addr, uint16) (net.Conn, error) { return tlstest.Pipe(&expired, nil), nil }
+	d := func(context.Context, netip.Addr, uint16) (net.Conn, error) {
+		return tlstest.Serve(&expired, tlstest.OK200), nil
+	}
 	res := (&Checker{Resolver: &fakeResolver{addrs: []string{"93.184.215.14"}}, Dial: d}).Check(context.Background(), "https://example.com/")
 	if got := statuses(res.Hops[0]); got != "dns=ok tcp=ok tls=failed http=skipped" {
 		t.Errorf("steps = %s", got)

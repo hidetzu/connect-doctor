@@ -31,7 +31,7 @@ func (f *fakeResolver) LookupNetIP(_ context.Context, _, host string) ([]netip.A
 // okDial "connects" to anything, over an in-memory pipe whose other end is a
 // TLS server with a certificate the test CA issued for example.com.
 func okDial(context.Context, netip.Addr, uint16) (net.Conn, error) {
-	return tlstest.Pipe(&validCert, nil), nil
+	return tlstest.Serve(&validCert, tlstest.OK200), nil
 }
 
 func check(r Resolver, url string) Result {
@@ -97,16 +97,16 @@ func TestRefusedAddressNeverShown(t *testing.T) {
 	}
 }
 
-func TestDNSOkIsIncomplete(t *testing.T) {
+func TestAllLayersOkConcludesOk(t *testing.T) {
 	r := &fakeResolver{addrs: []string{"2606:4700:4700::1111", "93.184.215.14", "93.184.215.14"}}
 	res := check(r, "https://Example.com/a")
 	if len(r.asked) != 1 || r.asked[0] != "example.com." {
 		t.Fatalf("resolver asked %v, want [example.com.] (absolute name)", r.asked)
 	}
-	if res.Conclusion.Status != ConclusionIncomplete || res.Conclusion.FailedStep != "" {
-		t.Errorf("conclusion = %+v, want incomplete", res.Conclusion)
+	if res.Conclusion.Status != ConclusionOK || res.Conclusion.FailedStep != "" || !strings.Contains(res.Conclusion.Summary, "ステータス200") {
+		t.Errorf("conclusion = %+v, want ok with status 200", res.Conclusion)
 	}
-	if got := statuses(res.Hops[0]); got != "dns=ok tcp=ok tls=ok http=not_implemented" {
+	if got := statuses(res.Hops[0]); got != "dns=ok tcp=ok tls=ok http=ok" {
 		t.Errorf("steps = %s", got)
 	}
 	if got := res.Hops[0].Steps[0].Detail.Addresses; strings.Join(got, ",") != "93.184.215.14,2606:4700:4700::1111" {
@@ -120,7 +120,7 @@ func TestDNSOkIsIncomplete(t *testing.T) {
 	}
 	// http:// has no TLS step at all.
 	res = check(r, "http://example.com/")
-	if got := statuses(res.Hops[0]); got != "dns=ok tcp=ok tls=not_applicable http=not_implemented" {
+	if got := statuses(res.Hops[0]); got != "dns=ok tcp=ok tls=not_applicable http=ok" {
 		t.Errorf("http steps = %s", got)
 	}
 }
@@ -156,7 +156,7 @@ func TestLiteralAddressSkipsDNS(t *testing.T) {
 	if len(r.asked) != 0 {
 		t.Errorf("resolver asked %v", r.asked)
 	}
-	if got := statuses(res.Hops[0]); got != "dns=not_applicable tcp=ok tls=ok http=not_implemented" {
+	if got := statuses(res.Hops[0]); got != "dns=not_applicable tcp=ok tls=ok http=ok" {
 		t.Errorf("steps = %s", got)
 	}
 }
@@ -166,6 +166,7 @@ func TestEveryCodeHasWords(t *testing.T) {
 		target.CodeMissing, target.CodeMalformed, target.CodeUnsupportedScheme, target.CodeUnsupportedPort,
 		target.CodeCredentials, target.CodeLocalName, target.CodeRefusedAddress, target.CodeIDNNotImplemented,
 		"dns.not_found", "dns.timeout", "dns.server_failure", "dns.refused_address", "server.busy",
+		"http.timeout", "http.no_response", "http.malformed_response",
 		"tls.cert_expired", "tls.cert_untrusted", "tls.cert_name_mismatch", "tls.handshake_failed", "tls.timeout", "tls.not_tls",
 		"tcp.refused", "tcp.timeout", "tcp.unreachable", "tcp.no_route_family", "tcp.refused_address", "tcp.failed",
 	}
