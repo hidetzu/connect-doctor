@@ -49,6 +49,9 @@ var messages = map[string]string{
 	"http.no_response":        "リクエストを送りましたが、サーバは何も返さずに接続を閉じました。サーバのアプリケーションやリバースプロキシを確認してください。",
 	"http.malformed_response": "サーバの応答がHTTPとして読めませんでした（形式が正しくないか、ヘッダが大きすぎます）。",
 
+	"http.redirect_refused":   "リダイレクト先に、ConnectDoctorは安全のため接続しませんでした。",
+	"http.too_many_redirects": "リダイレクトが多すぎるため、たどるのを止めました。リダイレクトがループしている可能性があります。",
+
 	"server.busy": "ただいま混み合っています。しばらくしてから、もう一度お試しください。",
 }
 
@@ -121,4 +124,20 @@ func summaryOK(code int, https bool) string {
 		body = st + "を返しました。"
 	}
 	return head + body + "あなたの環境から繋がらない場合は、あなた側のネットワーク（プロキシ・DNS・ファイアウォールなど）を確認してください。"
+}
+
+func summaryRedirectRefused(hop int, reason string) string {
+	return "ConnectDoctorは、リダイレクト先（" + strconv.Itoa(hop) + "番目のURL）に接続しませんでした。" + Message(reason)
+}
+
+func summaryTooManyRedirects(limit int) string {
+	return "ConnectDoctorのサーバからは、リダイレクトを" + strconv.Itoa(limit) + "回たどっても終わりませんでした。" + Message("http.too_many_redirects")
+}
+
+// summaryAfterRedirects says that the answer is about a later URL.
+func summaryAfterRedirects(redirects int) string {
+	if redirects == 0 {
+		return ""
+	}
+	return "（リダイレクトを" + strconv.Itoa(redirects) + "回たどった先の結果です。）"
 }

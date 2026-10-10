@@ -134,8 +134,14 @@ trust another CA, and no `InsecureSkipVerify`.** ⚠ **Tests give trust the way 
 | `http.timeout` | No response before the deadline |
 | `http.malformed_response` | Bytes that are not an HTTP/1.x response, ⚠ **including response headers over the 64 KiB cap** |
 | `http.no_response` | ⚠ **The connection closed (or reset) after the request with not one response byte** — owner decision, hidetzu/connect-doctor#4: ⚠ **nothing arrived ≠ malformed** ([`evidence.md`](../.claude/rules/evidence.md)) |
-| `http.too_many_redirects` | Redirect limit reached |
-| `http.redirect_refused` | ⚠ **A hop's URL was refused by policy** — ⚠ **the conclusion names the hop** |
+| `http.too_many_redirects` | ⚠ **Conclusion-level**: more than `limits.RedirectHops` redirects. No `failed_step` |
+| `http.redirect_refused` | ⚠ **Conclusion-level**: hop N ≥ 2 was refused — at input (`hops[N-1].code` holds the `input.*` reason, every step skipped), at DNS, or at the socket. No `failed_step`; ⚠ **the summary names the hop and its reason** (owner decision, hidetzu/connect-doctor#5) |
+
+⚠ **Redirects** (hidetzu/connect-doctor#5): only 301, 302, 303, 307 and 308 with a `Location` are
+followed (RFC 9110 § 15.4); 300, 304 and a 3xx without `Location` are the answer. A relative
+`Location` is resolved against the hop's URL. ⚠ **Each next URL goes through `target.Parse`, DNS,
+the policy, TCP, TLS and HTTP from the start; one context bounds every hop (`limits.Check`).**
+⚠ **A refused hop's URL is not echoed when it carries credentials or does not parse.**
 
 ⚠ **Why 5xx is `ok` at the HTTP layer**: the question is "why does it not connect". A 503 means
 it connected, and the server said it is unavailable. ⚠ **The conclusion says exactly that**, and
@@ -277,7 +283,9 @@ once the API ships**; renaming one is a breaking change.
   carries either today; both stay in the vocabulary for a step added later.** ⚠ **Never `ok` while a layer was not checked** — ⚠ **"not checked" is not
   "connected"** ([`evidence.md`](../.claude/rules/evidence.md)).
 - `conclusion.failed_step` is the **first** step, across all hops, whose status is `failed` or
-  `refused`; absent on `ok`.
+  `refused`; absent on `ok`, ⚠ **and absent for the conclusion-level codes** (`input.*`,
+  `http.redirect_refused`, `http.too_many_redirects`).
+- ⚠ **`hops[]` has one entry per URL visited, in order**; the page draws one ladder per hop.
 - ⚠ **`code` is the stable contract for programs. `summary` / `message` are for people and may be
   reworded** without a version bump.
 - ⚠ **A refused address never appears in `detail`** (T5).

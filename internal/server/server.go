@@ -35,9 +35,11 @@ func New(c *diag.Checker, logger *log.Logger) *Server {
 
 func newWithSlots(c *diag.Checker, logger *log.Logger, slots int) *Server {
 	page := template.Must(template.New("page.html").Funcs(template.FuncMap{
-		"mark":  mark,
-		"label": diag.StatusLabel,
-		"upper": strings.ToUpper,
+		"mark":    mark,
+		"label":   diag.StatusLabel,
+		"upper":   strings.ToUpper,
+		"inc":     func(i int) int { return i + 1 },
+		"message": diag.Message,
 	}).ParseFS(templates, "templates/page.html"))
 	return &Server{checker: c, log: logger, page: page, slots: make(chan struct{}, slots)}
 }
