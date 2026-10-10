@@ -44,10 +44,13 @@ docker push $IMAGE
 
 # ⚠ --max-instances 1 bounds what the service can cost and what it can be made to do.
 # ⚠ --concurrency 8 matches limits.ConcurrentChecks; a 9th request gets 503 server.busy.
+# ⚠ --args=-trust-xff: Cloud Run appends the client address as the last X-Forwarded-For entry
+#   (adr/0008); the per-client limits key on it. ⚠ Never set it where no such proxy sits in front.
 # ⚠ --allow-unauthenticated makes it public. That is the product.
 gcloud run deploy connect-doctor --image $IMAGE --region $REGION --project $PROJECT \
   --service-account $SA@$PROJECT.iam.gserviceaccount.com \
   --max-instances 1 --concurrency 8 --cpu 1 --memory 512Mi --timeout 60 \
+  --args=-trust-xff \
   --allow-unauthenticated
 ```
 
@@ -58,6 +61,11 @@ URL=$(gcloud run services describe connect-doctor --region $REGION --project $PR
 curl -s "$URL/api/check?url=https://example.com" | head -20
 curl -s "$URL/api/check?url=http://169.254.169.254/"        # must be refused
 curl -s "$URL/api/check?url=http://metadata.google.internal/" # must be refused
+
+# ⚠ The per-client limit keys on the real client, not a forged X-Forwarded-For entry:
+#   after the burst, a request with a forged first entry must still get 429.
+for i in 1 2 3 4; do curl -s -o /dev/null -w "%{http_code} " -H "X-Forwarded-For: 192.0.2.$i" \
+  "$URL/api/check?url=https://example.com"; done; echo   # want: 200 200 200 429
 
 # ⚠ The runtime account must still have no role bindings: this must print nothing.
 gcloud projects get-iam-policy $PROJECT --flatten=bindings --filter="bindings.members:serviceAccount:$SA@" \

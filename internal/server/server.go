@@ -7,13 +7,18 @@ import (
 	"encoding/json"
 	"html/template"
 	"log"
+	"math"
 	"net/http"
+	"net/netip"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/hidetzu/connect-doctor/internal/diag"
 	"github.com/hidetzu/connect-doctor/internal/limits"
+	"github.com/hidetzu/connect-doctor/internal/ratelimit"
+	"github.com/hidetzu/connect-doctor/internal/target"
 )
 
 //go:embed templates/page.html
@@ -21,16 +26,30 @@ var templates embed.FS
 
 // Server is the HTTP front of a diag.Checker.
 type Server struct {
-	checker *diag.Checker
-	log     *log.Logger
-	page    *template.Template
-	slots   chan struct{}
-	busy    atomic.Int64 // requests answered "busy"; counted, never shown to users
+	checker  *diag.Checker
+	log      *log.Logger
+	page     *template.Template
+	slots    chan struct{}
+	busy     atomic.Int64 // requests answered "busy"; counted, never shown to users
+	limiter  *ratelimit.Limiter
+	trustXFF bool
 }
 
-// New returns a Server. Logs go to logger.
-func New(c *diag.Checker, logger *log.Logger) *Server {
-	return newWithSlots(c, logger, limits.ConcurrentChecks)
+// Options are the operator's settings.
+type Options struct {
+	// TrustXFF takes the client address from the LAST X-Forwarded-For entry.
+	// ⚠ Only behind a proxy that appends it (Cloud Run does, docs/adr/0008);
+	// anywhere else a client could pick its own key. Off: the TCP peer.
+	TrustXFF bool
+}
+
+// New returns a Server with the per-client limits on (hidetzu/connect-doctor#6).
+// ⚠ There is no way to construct a production Server without them.
+func New(c *diag.Checker, logger *log.Logger, opts Options) *Server {
+	s := newWithSlots(c, logger, limits.ConcurrentChecks)
+	s.limiter = ratelimit.New(nil)
+	s.trustXFF = opts.TrustXFF
+	return s
 }
 
 func newWithSlots(c *diag.Checker, logger *log.Logger, slots int) *Server {
@@ -80,6 +99,16 @@ type apiError struct {
 func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
+	d, ok := s.admit(w, r, r.URL.Query().Get("url"))
+	defer d.Done()
+	if !ok {
+		var e apiError
+		e.Error.Code = refusalCode(d)
+		e.Error.Message = diag.Message(e.Error.Code)
+		w.WriteHeader(refusalStatus(d))
+		_ = json.NewEncoder(w).Encode(e)
+		return
+	}
 	if !s.acquire() {
 		var e apiError
 		e.Error.Code, e.Error.Message = "server.busy", diag.Message("server.busy")
@@ -116,11 +145,17 @@ func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
 	d := pageData{Note: diag.ObservedFromNote}
 	if _, asked := r.URL.Query()["url"]; asked {
 		d.Input = r.URL.Query().Get("url")
-		if s.acquire() {
+		dec, ok := s.admit(w, r, d.Input)
+		defer dec.Done()
+		switch {
+		case !ok:
+			d.Busy = diag.Message(refusalCode(dec))
+			w.WriteHeader(refusalStatus(dec))
+		case s.acquire():
 			res := s.checker.Check(r.Context(), d.Input)
 			s.release()
 			d.Result = &res
-		} else {
+		default:
 			d.Busy = diag.Message("server.busy")
 			w.WriteHeader(http.StatusServiceUnavailable)
 		}
@@ -128,6 +163,60 @@ func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
 	if err := s.page.Execute(w, d); err != nil {
 		s.log.Printf("page: %v", err)
 	}
+}
+
+// admit applies the per-client limits to a request that would start a check.
+// On a refusal it sets Retry-After and writes the one log line a refusal gets.
+func (s *Server) admit(w http.ResponseWriter, r *http.Request, rawURL string) (ratelimit.Decision, bool) {
+	if s.limiter == nil {
+		return ratelimit.Decision{}, true
+	}
+	addr := s.clientAddr(r)
+	d := s.limiter.Take(ratelimit.Key(addr))
+	if d.Allowed() {
+		return d, true
+	}
+	w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(d.RetryAfter.Seconds()))))
+	// ⚠ Hostname and client prefix only, and only a hostname target.Parse
+	// accepted: never a path, a query, a full address, or a refused address
+	// (docs/adr/0010, .claude/rules/security.md § 5).
+	host := "-"
+	if t, err := target.Parse(rawURL); err == nil {
+		host = t.Host
+	}
+	s.log.Printf("limit refused=%s target=%s client=%s refused_total=%d", d.Reason, host, ratelimit.LogPrefix(addr), s.limiter.Refused()[d.Reason])
+	return d, false
+}
+
+// clientAddr is the address the limits key on.
+func (s *Server) clientAddr(r *http.Request) netip.Addr {
+	if s.trustXFF {
+		if v := r.Header.Values("X-Forwarded-For"); len(v) > 0 {
+			parts := strings.Split(v[len(v)-1], ",")
+			// ⚠ The LAST entry: the proxy appends it; earlier ones are the client's own words.
+			if a, err := netip.ParseAddr(strings.TrimSpace(parts[len(parts)-1])); err == nil {
+				return a
+			}
+		}
+	}
+	if ap, err := netip.ParseAddrPort(r.RemoteAddr); err == nil {
+		return ap.Addr()
+	}
+	return netip.IPv6Unspecified()
+}
+
+func refusalCode(d ratelimit.Decision) string {
+	if d.Reason == ratelimit.ReasonGlobal {
+		return "server.busy"
+	}
+	return "server.rate_limited"
+}
+
+func refusalStatus(d ratelimit.Decision) int {
+	if d.Reason == ratelimit.ReasonGlobal {
+		return http.StatusServiceUnavailable
+	}
+	return http.StatusTooManyRequests
 }
 
 func mark(st diag.Status) string {

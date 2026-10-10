@@ -195,7 +195,7 @@ design starts from it, not adds it later.
 | T8 | Port scanning | ⚠ **Only ports 80 and 443 are ever dialled** ([`adr/0002`](adr/0002-only-ports-80-and-443-are-ever-dialed.md)). ⚠ **One target per request** | `internal/target` |
 | T9 | Credentials in the URL (`https://user:pass@host/`) | ⚠ **Refused.** We never send them, and never echo them | `internal/target` |
 | T10 | Resource exhaustion: slow-loris targets, huge headers, huge bodies | Timeouts and caps (§ 3); one context bounds the whole check | `internal/limits` |
-| T11 | Using us as an anonymous request cannon | Concurrency cap now. ⚠ **A per-client rate limit is an issue, and its numbers are an owner decision** | `internal/server` |
+| T11 | Using us as an anonymous request cannon | Concurrency cap; ⚠ **per-client limits and a global breaker** (hidetzu/connect-doctor#6), ⚠ **per-target limits** (hidetzu/connect-doctor#27) — [`adr/0010`](adr/0010-abuse-limits-protect-targets-first-with-one-in-memory-limiter-per-question.md) | `internal/ratelimit`, `internal/server` |
 | T12 | Our responses leaking the target's secrets (URL query tokens) | ⚠ **Query strings are never logged.** The response echoes the URL only to the caller who sent it | `internal/server` |
 | T13 | Non-HTTP schemes (`file:`, `gopher:`, `ftp:`) | ⚠ **Only `http` and `https`** | `internal/target` |
 

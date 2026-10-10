@@ -52,6 +52,8 @@ var messages = map[string]string{
 	"http.redirect_refused":   "リダイレクト先に、ConnectDoctorは安全のため接続しませんでした。",
 	"http.too_many_redirects": "リダイレクトが多すぎるため、たどるのを止めました。リダイレクトがループしている可能性があります。",
 
+	"server.rate_limited": "短い時間に診断が集中したため、ConnectDoctorは一時的に受け付けを止めています。少し待ってから、もう一度お試しください。",
+
 	"server.busy": "ただいま混み合っています。しばらくしてから、もう一度お試しください。",
 }
 
