@@ -53,6 +53,7 @@ a { color: var(--accent); }
 {{range $h.Steps}}  <tr><th scope="row">{{upper .Step}}</th><td aria-hidden="true">{{mark .Status}}</td><td>{{label .Status}}{{with .DurationMS}} <span class="ms">{{.}} ms</span>{{end}}{{if and (eq .Step "http") .Detail}}{{with .Detail.StatusCode}} <span class="ms">ステータス {{.}}</span>{{end}}{{end}}</td></tr>
 {{end}}</table>
 {{end}}<div class="conclusion">
+  {{if .Cached}}<p class="muted">{{$.Age}}秒前の診断結果です。<a href="/?url={{$.Input | urlquery}}&amp;fresh=1">再診断</a></p>{{end}}
   <h2>結論</h2>
   <p>{{.Conclusion.Summary}}</p>
   <p class="muted">{{.ObservedFromNote}}</p>

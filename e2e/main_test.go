@@ -52,12 +52,16 @@ const (
 	addrLimited  = "93.184.215.44" // limited.test
 	addrShared   = "93.184.215.45" // share1..share6.test, one address
 	addrLimited2 = "93.184.215.47" // limited2.test, the redirect target
+
+	// hidetzu/connect-doctor#28: counts what a cached answer must not cause.
+	addrCached = "93.184.215.48" // cached.test
 )
 
 var (
 	limitedAccepts  atomic.Int32
 	sharedAccepts   atomic.Int32
 	limited2Accepts atomic.Int32
+	cachedAccepts   atomic.Int32
 )
 
 // lastRequest is what the most recent request to addrListen carried
@@ -131,6 +135,7 @@ func setup() error {
 		{"addr", "add", addrLimited + "/32", "dev", "lo"},
 		{"addr", "add", addrShared + "/32", "dev", "lo"},
 		{"addr", "add", addrLimited2 + "/32", "dev", "lo"},
+		{"addr", "add", addrCached + "/32", "dev", "lo"},
 		{"link", "add", "d0", "type", "dummy"},
 		{"link", "set", "d0", "up"},
 		{"route", "add", addrDrop + "/32", "dev", "d0"},
@@ -158,7 +163,7 @@ func setup() error {
 	now := time.Now()
 	good, _ := ca.Valid("ok.test", "fallback.test", "status503.test", "bigbody.test", "bigheader.test",
 		"redir.test", "toloop.test", "tolocal.test", "toport.test", "spin-a.test", "spin-b.test", "rel.test",
-		"slowhop-a.test", "slowhop-b.test", "tolimited.test", "limited.test", "limited2.test",
+		"slowhop-a.test", "slowhop-b.test", "tolimited.test", "limited.test", "limited2.test", "cached.test",
 		"share1.test", "share2.test", "share3.test", "share4.test", "share5.test", "share6.test", addrListen)
 	expired, _ := ca.Leaf([]string{"expired.test"}, now.Add(-48*time.Hour), now.Add(-24*time.Hour))
 	untrusted, _ := stranger.Valid("untrusted.test")
@@ -169,7 +174,7 @@ func setup() error {
 			return err
 		}
 	}
-	for a, n := range map[string]*atomic.Int32{addrLimited: &limitedAccepts, addrShared: &sharedAccepts, addrLimited2: &limited2Accepts} {
+	for a, n := range map[string]*atomic.Int32{addrLimited: &limitedAccepts, addrShared: &sharedAccepts, addrLimited2: &limited2Accepts, addrCached: &cachedAccepts} {
 		if err := listen(a+":443", n, &good); err != nil {
 			return err
 		}

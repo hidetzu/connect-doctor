@@ -15,19 +15,22 @@ import (
 
 func settle() { time.Sleep(200 * time.Millisecond) }
 
+// These use fresh=1 (再診断) so the cache (hidetzu/connect-doctor#28) does not
+// answer: the target limits must hold for fresh checks.
+
 // hidetzu/connect-doctor#27 AC 1: past the hostname budget, whoever asks,
 // nothing more reaches the target.
 func TestHostnameBudgetThroughTheBinary(t *testing.T) {
 	in := start(t)
 	before := limitedAccepts.Load()
 	for i := 0; i < limits.TargetHostBurst; i++ {
-		in.api(t, "https://limited.test/")
+		in.apiFresh(t, "https://limited.test/")
 	}
 	settle()
 	if n := limitedAccepts.Load() - before; n != limits.TargetHostBurst {
 		t.Fatalf("control: the target saw %d connections, want %d", n, limits.TargetHostBurst)
 	}
-	code, res, _ := in.api(t, "https://limited.test/")
+	code, res, _ := in.apiFresh(t, "https://limited.test/")
 	if code != http.StatusTooManyRequests || res.Conclusion.Code != diag.CodeTargetLimited {
 		t.Errorf("past the budget: %d %+v", code, res.Conclusion)
 	}
@@ -42,7 +45,7 @@ func TestDestinationBudgetThroughTheBinary(t *testing.T) {
 	in := start(t)
 	before := sharedAccepts.Load()
 	for i := 1; i <= limits.TargetDestBurst; i++ {
-		in.api(t, fmt.Sprintf("https://share%d.test/", i))
+		in.apiFresh(t, fmt.Sprintf("https://share%d.test/", i))
 	}
 	settle()
 	if n := sharedAccepts.Load() - before; n != limits.TargetDestBurst {
@@ -63,7 +66,7 @@ func TestDestinationBudgetThroughTheBinary(t *testing.T) {
 func TestRedirectIntoASpentHostname(t *testing.T) {
 	in := start(t)
 	for i := 0; i < limits.TargetHostBurst; i++ {
-		in.api(t, "https://limited2.test/")
+		in.apiFresh(t, "https://limited2.test/")
 	}
 	settle()
 	before := limited2Accepts.Load()

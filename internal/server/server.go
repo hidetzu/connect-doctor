@@ -34,6 +34,7 @@ type Server struct {
 	busy     atomic.Int64 // requests answered "busy"; counted, never shown to users
 	limiter  *ratelimit.Limiter
 	trustXFF bool
+	cache    *resultCache // nil: no cache (unit tests of other behaviour only)
 }
 
 // Options are the operator's settings.
@@ -54,6 +55,7 @@ func New(c *diag.Checker, logger *log.Logger, opts Options) *Server {
 	}
 	s := newWithSlots(c, logger, limits.ConcurrentChecks)
 	s.limiter = ratelimit.New(nil)
+	s.cache = newResultCache(nil)
 	s.trustXFF = opts.TrustXFF
 	return s
 }
@@ -115,15 +117,20 @@ func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(e)
 		return
 	}
-	if !s.acquire() {
-		var e apiError
-		e.Error.Code, e.Error.Message = "server.busy", diag.Message("server.busy")
-		w.WriteHeader(http.StatusServiceUnavailable)
-		_ = json.NewEncoder(w).Encode(e)
-		return
+	raw := r.URL.Query().Get("url")
+	res, hit := s.cached(r, raw)
+	if !hit {
+		if !s.acquire() {
+			var e apiError
+			e.Error.Code, e.Error.Message = "server.busy", diag.Message("server.busy")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_ = json.NewEncoder(w).Encode(e)
+			return
+		}
+		res = s.checker.Check(r.Context(), raw)
+		s.release()
+		s.remember(raw, res)
 	}
-	res := s.checker.Check(r.Context(), r.URL.Query().Get("url"))
-	s.release()
 
 	status := http.StatusOK
 	switch {
@@ -144,6 +151,7 @@ type pageData struct {
 	Input  string
 	Result *diag.Result
 	Busy   string
+	Age    int // seconds since a cached result was checked
 }
 
 func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
@@ -157,19 +165,22 @@ func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
 		d.Input = r.URL.Query().Get("url")
 		dec, ok := s.admit(w, r, d.Input)
 		defer dec.Done()
-		switch {
-		case !ok:
+		if !ok {
 			d.Busy = diag.Message(refusalCode(dec))
 			w.WriteHeader(refusalStatus(dec))
-		case s.acquire():
+		} else if res, hit := s.cached(r, d.Input); hit {
+			d.Result = &res
+			d.Age = int(time.Since(res.CheckedAt).Seconds())
+		} else if s.acquire() {
 			res := s.checker.Check(r.Context(), d.Input)
 			s.release()
+			s.remember(d.Input, res)
 			d.Result = &res
 			if res.Conclusion.Code == diag.CodeTargetLimited {
 				s.targetLimited(w, r, res)
 				w.WriteHeader(http.StatusTooManyRequests)
 			}
-		default:
+		} else {
 			d.Busy = diag.Message("server.busy")
 			w.WriteHeader(http.StatusServiceUnavailable)
 		}
@@ -200,6 +211,22 @@ func (s *Server) admit(w http.ResponseWriter, r *http.Request, rawURL string) (r
 	}
 	s.log.Printf("limit refused=%s target=%s client=%s refused_total=%d", d.Reason, host, ratelimit.LogPrefix(addr), s.limiter.Refused()[d.Reason])
 	return d, false
+}
+
+// cached answers from the cache unless the request asks for a fresh check
+// (fresh=1, the page's 再診断). ⚠ The per-client limit has already been
+// applied by the caller; the target limits apply to every fresh check.
+func (s *Server) cached(r *http.Request, raw string) (diag.Result, bool) {
+	if s.cache == nil || r.URL.Query().Get("fresh") == "1" {
+		return diag.Result{}, false
+	}
+	return s.cache.get(cacheKey(raw))
+}
+
+func (s *Server) remember(raw string, res diag.Result) {
+	if s.cache != nil {
+		s.cache.put(cacheKey(raw), res)
+	}
 }
 
 // targetLimited sets Retry-After and writes the one log line a target-limit
