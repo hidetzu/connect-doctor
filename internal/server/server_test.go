@@ -419,8 +419,14 @@ func TestTaglineAndFooter(t *testing.T) {
 		}
 	}
 	// ⚠ The sentence states the cache's real duration.
-	if !strings.Contains(diag.PrivacyNote(), strconv.Itoa(int(limits.CacheTTL.Seconds()))+"秒") {
-		t.Errorf("privacy note %q does not match limits.CacheTTL", diag.PrivacyNote())
+	// The request log keeps the URL (owner decision 2026-10-11), so the note
+	// must not promise that nothing is stored.
+	if strings.Contains(diag.PrivacyNote(), "保存しません") || !strings.Contains(diag.PrivacyNote(), "アクセスログにしばらく残ります") {
+		t.Errorf("privacy note %q does not say the access log keeps the URL", diag.PrivacyNote())
+	}
+	// The cache's duration is not given in seconds (owner decision 2026-10-11).
+	if strings.ContainsAny(diag.PrivacyNote(), "0123456789") {
+		t.Errorf("privacy note %q gives a number", diag.PrivacyNote())
 	}
 }
 
