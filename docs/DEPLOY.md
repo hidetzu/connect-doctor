@@ -46,11 +46,13 @@ docker push $IMAGE
 # ⚠ --concurrency 8 matches limits.ConcurrentChecks; a 9th request gets 503 server.busy.
 # ⚠ --args=-trust-xff: Cloud Run appends the client address as the last X-Forwarded-For entry
 #   (adr/0008); the per-client limits key on it. ⚠ Never set it where no such proxy sits in front.
+# ⚠ -vantage names where checks leave from on the page's chip; ⚠ keep it equal to $REGION.
+#   (^@^ makes @ the separator, because the value contains a comma.)
 # ⚠ --allow-unauthenticated makes it public. That is the product.
 gcloud run deploy connect-doctor --image $IMAGE --region $REGION --project $PROJECT \
   --service-account $SA@$PROJECT.iam.gserviceaccount.com \
   --max-instances 1 --concurrency 8 --cpu 1 --memory 512Mi --timeout 60 \
-  --args=-trust-xff \
+  --args='^@^-trust-xff@-vantage=Tokyo, Japan' \
   --allow-unauthenticated
 ```
 
