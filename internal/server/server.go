@@ -32,6 +32,12 @@ var templates embed.FS
 //go:embed static/icon.svg
 var icon []byte
 
+// ogImage is the 1200×630 preview shown when the URL is shared
+// (hidetzu/connect-doctor#44, candidate A, settled by looking).
+//
+//go:embed static/og.png
+var ogImage []byte
+
 // pageCSP: the page runs no script and loads nothing from elsewhere; the only
 // image it fetches is its own favicon.
 const pageCSP = "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
@@ -46,6 +52,7 @@ type Server struct {
 	limiter  *ratelimit.Limiter
 	trustXFF bool
 	vantage  string
+	public   string
 	cache    *resultCache // nil: no cache (unit tests of other behaviour only)
 }
 
@@ -55,6 +62,10 @@ type Options struct {
 	// ⚠ Only behind a proxy that appends it (Cloud Run does, docs/adr/0008);
 	// anywhere else a client could pick its own key. Off: the TCP peer.
 	TrustXFF bool
+	// PublicURL is the service's public origin (e.g. https://connect-doctor.hidetzu.work),
+	// used for og:url and og:image, which must be absolute. ⚠ Empty: those tags
+	// are omitted rather than guessed from the request.
+	PublicURL string
 	// Vantage names where the checks leave from, for the page's chip
 	// (e.g. "Tokyo, Japan"). ⚠ Set by the operator to match the deployment
 	// (docs/DEPLOY.md); empty names no place.
@@ -74,6 +85,7 @@ func New(c *diag.Checker, logger *log.Logger, opts Options) *Server {
 	s.cache = newResultCache(nil)
 	s.trustXFF = opts.TrustXFF
 	s.vantage = opts.Vantage
+	s.public = strings.TrimSuffix(opts.PublicURL, "/")
 	return s
 }
 
@@ -103,6 +115,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /{$}", s.handlePage)
 	mux.HandleFunc("GET /api/check", s.handleAPI)
 	mux.HandleFunc("GET /favicon.svg", handleIcon)
+	mux.HandleFunc("GET /og.png", handleOGImage)
 	return s.logRequests(mux)
 }
 
@@ -180,6 +193,7 @@ type pageData struct {
 	Tagline string
 	Privacy string
 	Source  string
+	Public  string
 }
 
 func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
@@ -187,7 +201,7 @@ func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Security-Policy", pageCSP)
 
-	d := pageData{Note: diag.ObservedFromNote, Vantage: s.vantage, Tagline: diag.Tagline, Privacy: diag.PrivacyNote(), Source: diag.SourceURL}
+	d := pageData{Note: diag.ObservedFromNote, Vantage: s.vantage, Tagline: diag.Tagline, Privacy: diag.PrivacyNote(), Source: diag.SourceURL, Public: s.public}
 	if _, asked := r.URL.Query()["url"]; asked {
 		d.Input = r.URL.Query().Get("url")
 		dec, ok := s.admit(w, r, d.Input)
@@ -327,6 +341,12 @@ func handleIcon(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Cache-Control", "public, max-age=86400")
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'")
 	_, _ = w.Write(icon)
+}
+
+func handleOGImage(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "image/png")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	_, _ = w.Write(ogImage)
 }
 
 // glyph is the mark inside a step's node.

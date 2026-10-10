@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"image/png"
 	"io"
 	"log"
 	"net"
@@ -433,5 +434,37 @@ func TestRateLimitedSentences(t *testing.T) {
 	}
 	if got := diag.RateLimited("burst", 9); !strings.Contains(got, "あと 9 秒") {
 		t.Errorf("seconds missing: %q", got)
+	}
+}
+
+// hidetzu/connect-doctor#44: description and Open Graph tags; the absolute
+// ones only when the operator gives the public URL.
+func TestOpenGraph(t *testing.T) {
+	r := staticResolver{}
+	with := New(&diag.Checker{Resolver: r, Dial: pipeDial}, log.New(io.Discard, "", 0), Options{PublicURL: "https://cd.example/"}).Handler()
+	_, page := get(t, with, "/")
+	for _, want := range []string{
+		`<meta name="description" content="` + diag.Tagline + `">`,
+		`<meta property="og:title" content="ConnectDoctor">`,
+		`<meta property="og:url" content="https://cd.example/">`,
+		`<meta property="og:image" content="https://cd.example/og.png">`,
+		`<meta name="twitter:card" content="summary_large_image">`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("page lacks %s", want)
+		}
+	}
+	without := New(&diag.Checker{Resolver: r, Dial: pipeDial}, log.New(io.Discard, "", 0), Options{}).Handler()
+	_, page = get(t, without, "/")
+	if strings.Contains(page, "og:image") || strings.Contains(page, "og:url") || !strings.Contains(page, "og:description") {
+		t.Error("without -public-url, og:image/og:url must be omitted and the rest kept")
+	}
+	resp, body := get(t, with, "/og.png")
+	if resp.StatusCode != 200 || resp.Header.Get("Content-Type") != "image/png" {
+		t.Fatalf("/og.png: %d %q", resp.StatusCode, resp.Header.Get("Content-Type"))
+	}
+	cfg, err := png.DecodeConfig(strings.NewReader(body))
+	if err != nil || cfg.Width != 1200 || cfg.Height != 630 {
+		t.Errorf("/og.png is %dx%d (%v), want 1200x630", cfg.Width, cfg.Height, err)
 	}
 }
