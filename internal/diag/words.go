@@ -250,12 +250,14 @@ const Tagline = "URLがなぜ繋がらないのかを、DNS → TCP → TLS → 
 // SourceURL is where the code lives.
 const SourceURL = "https://github.com/hidetzu/connect-doctor"
 
-// PrivacyNote says what happens to a URL, and ⚠ only what the code does: no
-// storage, the result cache (limits.CacheTTL, hidetzu/connect-doctor#28), and
-// the hostname logged when a limit refuses (docs/adr/0010). ⚠ Change the
-// code, change this sentence.
+// PrivacyNote says what happens to a URL, and ⚠ only what is true of the
+// running service: the platform's request log keeps the URL for a while (Cloud
+// Run records the full request URL; owner decision 2026-10-11 to keep that log
+// and say so), the result cache (limits.CacheTTL, hidetzu/connect-doctor#28),
+// and the hostname logged when a limit refuses (docs/adr/0010).
+// ⚠ Change the code or the deployment, change this sentence.
 func PrivacyNote() string {
-	return "入力したURLは保存しません。同じURLの再表示のために結果を" + strconv.Itoa(int(limits.CacheTTL.Seconds())) +
+	return "入力したURLは、サーバのアクセスログにしばらく残ります。同じURLの再表示のために結果を" + strconv.Itoa(int(limits.CacheTTL.Seconds())) +
 		"秒だけメモリに保持し、利用回数の制限に掛かったときだけホスト名を記録します。"
 }
 
