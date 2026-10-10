@@ -75,8 +75,13 @@ NOT-VERIFIED and exits non-zero** — ⚠ **never a skipped PASS.**
 | external | ⚠ **never** | ⚠ **Depends on third parties' uptime.** ⚠ **Every run's summary says so** |
 
 ⚠ **Whether the hosted runner can create the namespace is measured on every run** (the workflow's
-first step prints it, and the run summary records it). ⚠ **The result on the first run is recorded
-here with its date.**
+first step prints it, and the run summary records it).
+
+⚠ **First measured 2026-10-10, GitHub-hosted `ubuntu-24.04` (hidetzu/connect-doctor#19):
+`apparmor_restrict_unprivileged_userns=1`, so `unshare -rn` failed as is; after
+`sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0` it worked, and the final gate ran
+inside the namespace.** ⚠ **The workflow lifts that restriction on the runner only — it says so in
+every run summary.**
 
 ## 7. Return
 
