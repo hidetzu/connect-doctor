@@ -20,7 +20,7 @@ const ObservedFromNote = "ConnectDoctorのサーバから観測した結果で�
 // Messages per code. A code missing here is a bug caught by a test.
 var messages = map[string]string{
 	"input.missing":             "URLを入力してください。",
-	"input.malformed":           "URLとして解釈できませんでした。http:// または https:// から始まる形で入力してください。",
+	"input.malformed":           "URLとして解釈できませんでした。example.com や https://example.com/path のような形で入力してください。",
 	"input.unsupported_scheme":  "ConnectDoctorが診断できるのは http:// と https:// のURLだけです。",
 	"input.unsupported_port":    "ConnectDoctorが接続するのはポート80と443だけです。それ以外のポートは、ポートスキャンに使われないよう診断の対象外にしています。",
 	"input.credentials":         "ユーザー名やパスワードを含むURLは診断しません。認証情報を取り除いて入力してください。",
