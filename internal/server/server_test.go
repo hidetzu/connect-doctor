@@ -210,7 +210,7 @@ func TestClientLimitAnswers429(t *testing.T) {
 		}
 	}
 	resp, body := getFrom(t, h, u(limits.ClientBurst), "203.0.113.7")
-	if resp.StatusCode != http.StatusTooManyRequests || !strings.Contains(body, `"server.rate_limited"`) || resp.Header.Get("Retry-After") == "" {
+	if resp.StatusCode != http.StatusTooManyRequests || !strings.Contains(body, `"server.rate_limited"`) || resp.Header.Get("Retry-After") == "" || !strings.Contains(body, "あなたの診断回数") {
 		t.Fatalf("over the burst: %d %q Retry-After=%q", resp.StatusCode, body, resp.Header.Get("Retry-After"))
 	}
 	line := ""
@@ -227,9 +227,18 @@ func TestClientLimitAnswers429(t *testing.T) {
 			t.Errorf("log contains %q:\n%s", leak, logs.String())
 		}
 	}
-	// The page is limited too.
-	if resp, page := getFrom(t, h, "/?url=http://ok.test/", "203.0.113.7"); resp.StatusCode != http.StatusTooManyRequests || !strings.Contains(page, diag.Message("server.rate_limited")) {
+	// The page is limited too, and says it is the visitor's limit and how long
+	// to wait (hidetzu/connect-doctor#43).
+	resp, page := getFrom(t, h, "/?url=http://okp.test/", "203.0.113.7")
+	if resp.StatusCode != http.StatusTooManyRequests {
 		t.Errorf("page over the limit: %d", resp.StatusCode)
+	}
+	secs, _ := strconv.Atoi(resp.Header.Get("Retry-After"))
+	if want := diag.RateLimited("burst", secs); secs < 1 || !strings.Contains(page, want) {
+		t.Errorf("page does not say %q (Retry-After %q)", want, resp.Header.Get("Retry-After"))
+	}
+	if !strings.Contains(page, "あなたの診断回数") || !strings.Contains(page, "3回まで") {
+		t.Errorf("the page does not name the visitor's limit")
 	}
 	// ⚠ Control: another client is unaffected, and the plain page is never limited.
 	if resp, _ := getFrom(t, h, u(9), "203.0.113.8"); resp.StatusCode != 200 {
@@ -411,5 +420,18 @@ func TestTaglineAndFooter(t *testing.T) {
 	// ⚠ The sentence states the cache's real duration.
 	if !strings.Contains(diag.PrivacyNote(), strconv.Itoa(int(limits.CacheTTL.Seconds()))+"秒") {
 		t.Errorf("privacy note %q does not match limits.CacheTTL", diag.PrivacyNote())
+	}
+}
+
+func TestRateLimitedSentences(t *testing.T) {
+	for reason, want := range map[string]string{
+		"burst": "続けて診断できるのは3回まで", "hour": "1時間に30回まで", "day": "1日に100回まで", "concurrent": "前の診断がまだ終わっていません",
+	} {
+		if got := diag.RateLimited(reason, 9); !strings.Contains(got, want) {
+			t.Errorf("%s: %q", reason, got)
+		}
+	}
+	if got := diag.RateLimited("burst", 9); !strings.Contains(got, "あと 9 秒") {
+		t.Errorf("seconds missing: %q", got)
 	}
 }

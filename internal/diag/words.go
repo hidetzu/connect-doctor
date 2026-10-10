@@ -258,3 +258,24 @@ func PrivacyNote() string {
 	return "入力したURLは保存しません。同じURLの再表示のために結果を" + strconv.Itoa(int(limits.CacheTTL.Seconds())) +
 		"秒だけメモリに保持し、利用回数の制限に掛かったときだけホスト名を記録します。"
 }
+
+// RateLimited is the sentence for a visitor over their own limit
+// (hidetzu/connect-doctor#43): which limit, and how many seconds until the
+// next check. reason is internal/ratelimit's Reason; the numbers come from
+// internal/limits, never written into the sentence by hand.
+func RateLimited(reason string, seconds int) string {
+	var which string
+	switch reason {
+	case "burst":
+		which = "続けて診断できるのは" + strconv.Itoa(limits.ClientBurst) + "回までです。"
+	case "hour":
+		which = "診断できるのは1時間に" + strconv.Itoa(limits.ClientPerHour) + "回までです。"
+	case "day":
+		which = "診断できるのは1日に" + strconv.Itoa(limits.ClientPerDay) + "回までです。"
+	case "concurrent":
+		return "前の診断がまだ終わっていません。終わってから、もう一度お試しください。"
+	default:
+		return Message("server.rate_limited")
+	}
+	return "あなたの診断回数が上限に達しました。" + which + "あと " + strconv.Itoa(seconds) + " 秒で、もう一度診断できます。"
+}
