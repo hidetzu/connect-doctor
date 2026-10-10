@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/hidetzu/connect-doctor/internal/diag"
+	"github.com/hidetzu/connect-doctor/internal/tlstest"
 )
 
 type staticResolver struct{ addrs []netip.Addr }
@@ -45,8 +46,7 @@ func get(t *testing.T, h http.Handler, target string) (*http.Response, string) {
 }
 
 func pipeDial(context.Context, netip.Addr, uint16) (net.Conn, error) {
-	c, _ := net.Pipe()
-	return c, nil
+	return tlstest.Serve(nil, tlstest.OK200), nil
 }
 
 func newTestServer(r diag.Resolver, logs io.Writer, slots int) *Server {
@@ -65,7 +65,7 @@ func TestAPIAndPageRenderTheSameResult(t *testing.T) {
 	if err := json.Unmarshal([]byte(body), &res); err != nil {
 		t.Fatal(err)
 	}
-	if res.Conclusion.Status != diag.ConclusionIncomplete || res.ObservedFrom != "server" {
+	if res.Conclusion.Status != diag.ConclusionOK || res.ObservedFrom != "server" {
 		t.Fatalf("api result: %+v", res)
 	}
 
@@ -77,7 +77,7 @@ func TestAPIAndPageRenderTheSameResult(t *testing.T) {
 		res.Conclusion.Summary, // the page shows the API's conclusion, verbatim
 		diag.ObservedFromNote,
 		"93.184.215.14",
-		"✅", "🚧", diag.StatusLabel(diag.StatusNotImplemented),
+		"✅", "ステータス200",
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("page does not contain %q", want)

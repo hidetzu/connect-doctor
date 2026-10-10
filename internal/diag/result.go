@@ -81,6 +81,13 @@ type Detail struct {
 	ALPN        string      `json:"alpn,omitempty"`         // TLS
 	Certificate *CertDetail `json:"certificate,omitempty"`  // TLS: the leaf, verified or not
 
+	StatusCode    int               `json:"status_code,omitempty"`     // HTTP
+	Status        string            `json:"status,omitempty"`          // HTTP: the status line's text
+	Protocol      string            `json:"protocol,omitempty"`        // HTTP
+	Headers       map[string]string `json:"headers,omitempty"`         // HTTP: a short subset
+	BodyBytesRead int64             `json:"body_bytes_read,omitempty"` // HTTP: at most limits.ResponseBodyBytes
+	BodyTruncated bool              `json:"body_truncated,omitempty"`  // HTTP: more body existed than was read
+
 	Error string `json:"error,omitempty"`
 }
 
