@@ -55,7 +55,10 @@ type Conclusion struct {
 
 // Hop is one URL in a redirect chain.
 type Hop struct {
-	URL   string `json:"url,omitempty"`
+	URL string `json:"url,omitempty"`
+	// Code is set only on a redirect target refused before any step ran
+	// (an input.* code); its steps are all skipped.
+	Code  string `json:"code,omitempty"`
 	Steps []Step `json:"steps"`
 }
 

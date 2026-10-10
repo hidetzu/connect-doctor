@@ -18,7 +18,8 @@ h1 { margin: 0; font-size: 1.5rem; }
 form { display: flex; gap: .5rem; }
 input { flex: 1; min-width: 0; padding: .6rem .75rem; font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }
 button { padding: .6rem 1rem; font: inherit; color: #fff; background: var(--accent); border: 0; border-radius: 6px; cursor: pointer; }
-.ladder { margin: 2rem 0 1rem; border-collapse: collapse; font-size: 1.15rem; }
+.hop { margin: 1.5rem 0 0; font-size: .9rem; overflow-wrap: anywhere; }
+.ladder { margin: 1rem 0 1rem; border-collapse: collapse; font-size: 1.15rem; }
 .ladder th { padding: .2rem 1.5rem .2rem 0; text-align: left; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .ladder td { padding: .2rem .75rem .2rem 0; }
 .ladder .ms, .muted { color: var(--muted); font-size: .85rem; }
@@ -47,10 +48,11 @@ a { color: var(--accent); }
 </form>
 {{if .Busy}}<div class="conclusion" style="margin-top:2rem"><p>{{.Busy}}</p></div>{{end}}
 {{with .Result}}
-<table class="ladder" aria-label="各レイヤの結果">
-{{range (index .Hops 0).Steps}}  <tr><th scope="row">{{upper .Step}}</th><td aria-hidden="true">{{mark .Status}}</td><td>{{label .Status}}{{with .DurationMS}} <span class="ms">{{.}} ms</span>{{end}}</td></tr>
+{{$many := gt (len .Hops) 1}}{{range $i, $h := .Hops}}{{if $many}}<p class="hop">{{inc $i}}. {{if $h.URL}}<code>{{$h.URL}}</code>{{else}}<span class="muted">（表示しないURL）</span>{{end}}{{with $h.Code}} <span class="muted">— {{message .}}</span>{{end}}</p>{{end}}
+<table class="ladder" aria-label="各レイヤの結果{{if $many}}（{{inc $i}}番目のURL）{{end}}">
+{{range $h.Steps}}  <tr><th scope="row">{{upper .Step}}</th><td aria-hidden="true">{{mark .Status}}</td><td>{{label .Status}}{{with .DurationMS}} <span class="ms">{{.}} ms</span>{{end}}{{if and (eq .Step "http") .Detail}}{{with .Detail.StatusCode}} <span class="ms">ステータス {{.}}</span>{{end}}{{end}}</td></tr>
 {{end}}</table>
-<div class="conclusion">
+{{end}}<div class="conclusion">
   <h2>結論</h2>
   <p>{{.Conclusion.Summary}}</p>
   <p class="muted">{{.ObservedFromNote}}</p>
