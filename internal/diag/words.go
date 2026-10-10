@@ -152,3 +152,90 @@ func summaryTargetLimited(hop int) string {
 	}
 	return "リダイレクト先（" + strconv.Itoa(hop) + "番目のURL）への診断が短い時間に集中しているため、ConnectDoctorは接続を控えました。診断先の負担を避けるための制限で、サイト側の問題ではありません。少し待ってから、もう一度お試しください。"
 }
+
+// ---- The page's headline card (hidetzu/connect-doctor#25, candidate A) ----
+//
+// ⚠ Colour encodes state, never layer: State returns one of ok / warn / fail /
+// neutral. A refusal by ConnectDoctor is neutral, never red or yellow — it is
+// ours, not the target's (CLAUDE.md § 4-1, owner decision B on #25).
+
+var layerName = map[string]string{StepDNS: "DNS", StepTCP: "TCP", StepTLS: "TLS", StepHTTP: "HTTP"}
+
+// State is the page's colour class for a result.
+func State(r Result) string {
+	switch r.Conclusion.Status {
+	case ConclusionFailed:
+		return "fail"
+	case ConclusionRefused:
+		return "neutral"
+	}
+	if lastStatusCode(r) >= 400 {
+		return "warn"
+	}
+	return "ok"
+}
+
+// Headline is the first line of the result: where it stopped, or that it did not.
+func Headline(r Result) string {
+	c := r.Conclusion
+	switch {
+	case c.Code == CodeTargetLimited:
+		return "接続を控えました"
+	case c.Code == "http.redirect_refused":
+		return "リダイレクト先で止めました"
+	case c.Code == "http.too_many_redirects":
+		return "リダイレクトが終わりません"
+	case strings.HasPrefix(c.Code, "input."):
+		return "このURLは診断しませんでした"
+	case c.Status == ConclusionFailed:
+		return layerName[c.FailedStep] + " で止まっています"
+	case c.Status == ConclusionRefused:
+		return layerName[c.FailedStep] + " で止めました"
+	}
+	if s := lastStatusCode(r); s >= 400 {
+		return "接続できています — サーバは " + strconv.Itoa(s) + " を返しました"
+	}
+	return "すべての層を通りました（" + strconv.Itoa(lastStatusCode(r)) + "）"
+}
+
+// Cause is the one line under the headline.
+func Cause(r Result) string {
+	c := r.Conclusion
+	if c.Code == "http.redirect_refused" {
+		for _, h := range r.Hops[1:] {
+			if h.Code != "" {
+				return Message(h.Code)
+			}
+			for _, s := range h.Steps {
+				if s.Status == StatusRefused {
+					return Message(s.Code)
+				}
+			}
+		}
+	}
+	if c.Code != "" {
+		return Message(c.Code)
+	}
+	switch s := lastStatusCode(r); {
+	case s >= 500:
+		return "サーバ側（アプリケーション）でエラーが起きています。"
+	case s >= 400:
+		return "URLのパスや、アクセス権限を確認してください。"
+	}
+	if len(r.Hops) > 1 {
+		return "リダイレクトを" + strconv.Itoa(len(r.Hops)-1) + "回たどった先の結果です。あなたの環境から繋がらない場合は、あなた側のネットワークを確認してください。"
+	}
+	return "少なくとも ConnectDoctor のサーバからは接続できています。あなたの環境から繋がらない場合は、あなた側のネットワーク（プロキシ・DNS・ファイアウォールなど）を確認してください。"
+}
+
+func lastStatusCode(r Result) int {
+	if len(r.Hops) == 0 {
+		return 0
+	}
+	for _, s := range r.Hops[len(r.Hops)-1].Steps {
+		if s.Step == StepHTTP && s.Detail != nil {
+			return s.Detail.StatusCode
+		}
+	}
+	return 0
+}

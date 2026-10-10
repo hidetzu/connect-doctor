@@ -85,10 +85,11 @@ func TestAPIAndPageRenderTheSameResult(t *testing.T) {
 		t.Fatalf("page: %d", resp.StatusCode)
 	}
 	for _, want := range []string{
-		res.Conclusion.Summary, // the page shows the API's conclusion, verbatim
-		diag.ObservedFromNote,
+		diag.Headline(res), diag.Cause(res), // the page shows the API's result, in its own words
+		`class="verdict ok"`,
+		"あなたのPCからの接続結果ではありません", // the vantage, on every result (docs/adr/0001)
 		"93.184.215.14",
-		"✅", "ステータス200",
+		`<ol class="rail"`, "✓",
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("page does not contain %q", want)
@@ -98,7 +99,7 @@ func TestAPIAndPageRenderTheSameResult(t *testing.T) {
 
 func TestPageWithoutURLShowsFormAndVantage(t *testing.T) {
 	_, page := get(t, newTestServer(staticResolver{}, io.Discard, 1).Handler(), "/")
-	for _, want := range []string{`<form method="get" action="/">`, diag.ObservedFromNote} {
+	for _, want := range []string{`<form method="get" action="/">`, "あなたのPCからの接続結果ではありません", `<div class="strip"`} {
 		if !strings.Contains(page, want) {
 			t.Errorf("page does not contain %q", want)
 		}
@@ -326,5 +327,38 @@ func TestRepeatedCheckIsAnsweredFromTheCache(t *testing.T) {
 	getFrom(t, h, "/api/check?fresh=1&url=http://cache.test/", "198.51.100.4")
 	if d.n != 2 {
 		t.Errorf("再診断 made %d connections in total, want 2", d.n)
+	}
+}
+
+// hidetzu/connect-doctor#25 AC 3: colour encodes state, never a layer. The
+// stylesheet must name no step, and a step's class must be its status.
+func TestColourIsStateNotLayer(t *testing.T) {
+	b, err := templates.ReadFile("templates/page.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	css := string(b)[strings.Index(string(b), "<style>"):strings.Index(string(b), "</style>")]
+	for _, layer := range []string{".dns", ".tcp", ".tls", ".http"} {
+		if strings.Contains(strings.ToLower(css), layer) {
+			t.Errorf("the stylesheet has a rule for %s", layer)
+		}
+	}
+	if got := stepClass(diag.Step{Step: diag.StepTLS, Status: diag.StatusFailed}); got != "failed" {
+		t.Errorf("a failed TLS step has class %q, want its status only", got)
+	}
+	if got := stepClass(diag.Step{Step: diag.StepHTTP, Status: diag.StatusOK, Detail: &diag.Detail{StatusCode: 503}}); got != "ok warn" {
+		t.Errorf("an HTTP 503 step has class %q, want \"ok warn\"", got)
+	}
+}
+
+func TestVantageChip(t *testing.T) {
+	r := staticResolver{}
+	_, page := get(t, New(&diag.Checker{Resolver: r, Dial: pipeDial}, log.New(io.Discard, "", 0), Options{Vantage: "Tokyo, Japan"}).Handler(), "/")
+	if !strings.Contains(page, "Tokyo, Japan から観測") {
+		t.Error("the chip does not name the vantage given by the operator")
+	}
+	_, page = get(t, New(&diag.Checker{Resolver: r, Dial: pipeDial}, log.New(io.Discard, "", 0), Options{}).Handler(), "/")
+	if strings.Contains(page, "Tokyo") || !strings.Contains(page, "ConnectDoctorのサーバから観測") {
+		t.Error("without -vantage the chip must name no place")
 	}
 }
