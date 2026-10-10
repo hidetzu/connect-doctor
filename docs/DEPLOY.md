@@ -43,11 +43,11 @@ docker build -t $IMAGE .
 docker push $IMAGE
 
 # ⚠ --max-instances 1 bounds what the service can cost and what it can be made to do.
-# ⚠ --concurrency 16 matches limits.ConcurrentChecks; a 17th request gets 503 server.busy.
+# ⚠ --concurrency 8 matches limits.ConcurrentChecks; a 9th request gets 503 server.busy.
 # ⚠ --allow-unauthenticated makes it public. That is the product.
 gcloud run deploy connect-doctor --image $IMAGE --region $REGION --project $PROJECT \
   --service-account $SA@$PROJECT.iam.gserviceaccount.com \
-  --max-instances 1 --concurrency 16 --cpu 1 --memory 512Mi --timeout 60 \
+  --max-instances 1 --concurrency 8 --cpu 1 --memory 512Mi --timeout 60 \
   --allow-unauthenticated
 ```
 
