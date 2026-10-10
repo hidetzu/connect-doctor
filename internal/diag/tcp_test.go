@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/hidetzu/connect-doctor/internal/dial"
+	"github.com/hidetzu/connect-doctor/internal/tlstest"
 )
 
 // opErr wraps an errno the way net.Dialer does.
@@ -36,8 +37,7 @@ func (d *scriptedDial) dial(_ context.Context, a netip.Addr, _ uint16) (net.Conn
 	if err, ok := d.errs[a.String()]; ok {
 		return nil, err
 	}
-	c, _ := net.Pipe()
-	return c, nil
+	return tlstest.Pipe(&validCert, nil), nil
 }
 
 func checkTCP(addrs []string, errs map[string]error) (Result, *scriptedDial) {

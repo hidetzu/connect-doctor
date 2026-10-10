@@ -75,7 +75,22 @@ type Detail struct {
 	Addresses []string  `json:"addresses,omitempty"` // DNS
 	Address   string    `json:"address,omitempty"`   // TCP: the address that connected
 	Attempts  []Attempt `json:"attempts,omitempty"`  // TCP: every address tried, in order
-	Error     string    `json:"error,omitempty"`
+
+	TLSVersion  string      `json:"tls_version,omitempty"`  // TLS
+	CipherSuite string      `json:"cipher_suite,omitempty"` // TLS
+	ALPN        string      `json:"alpn,omitempty"`         // TLS
+	Certificate *CertDetail `json:"certificate,omitempty"`  // TLS: the leaf, verified or not
+
+	Error string `json:"error,omitempty"`
+}
+
+// CertDetail is what the leaf certificate says about itself. ⚠ Shown, not graded.
+type CertDetail struct {
+	Subject   string   `json:"subject"`
+	Names     []string `json:"names,omitempty"` // DNS and IP SANs
+	Issuer    string   `json:"issuer"`
+	NotBefore string   `json:"not_before"`
+	NotAfter  string   `json:"not_after"`
 }
 
 // Attempt is one TCP connection attempt.
