@@ -37,12 +37,18 @@ Status: accepted (2026-10-10). ⚠ **Supersedes [`0007`](0007-public-exposure-is
 | ⚠ **No network-level egress filter at zero cost** (one would need VPC egress, which needs paid NAT for the internet) | ⚠ **Accepted gap.** ⚠ **The code is the only egress defence** — which is what [`security.md`](../../.claude/rules/security.md) already assumes |
 | ⚠ **No hard spending cap** on Cloud Run | Max instances 1, rate limit, ⚠ **and a budget alert to the owner** (an alert does not stop billing — stated so nobody believes it does) |
 
-## ⚠ Measured after the first deploy, not assumed
+## ⚠ Measured after the first deploy (2026-10-10, revision `connect-doctor-00001`)
 
-- ⚠ **Whether IPv6 egress exists.** If not, IPv6-only targets are `tcp.no_route_family`, worded as ours.
-- ⚠ **Which header carries the client address, and which entry of it can be trusted**
-  (`X-Forwarded-For`) — ⚠ **not documented for Cloud Run in what was read; decides hidetzu/connect-doctor#6.**
-- ⚠ **Egress bytes per check.**
+| What | Observed | How |
+|---|---|---|
+| ⚠ **IPv6 egress** | ⚠ **Present.** An IPv6-only name (`ipv6.google.com`) was diagnosed `ok` on all four layers, connecting to an IPv6 address | ConnectDoctor's own API, from the deployed service, one run |
+| ⚠ **Client address** | ⚠ **Cloud Run appends the client's address as the LAST entry of `X-Forwarded-For`**; entries a client sends are kept in front of it, so ⚠ **only the last entry can be trusted**. `Forwarded: for=` carried the client's address alone, unaffected by a forged `X-Forwarded-For`. The container's `RemoteAddr` was a link-local address, never the client | A throwaway echo service in the same project and region, queried with no header, one forged entry and two forged entries; then deleted (service and image) |
+| ⚠ **Egress per check** | ⚠ **About 4.2 KB per check, at most 5.3 KB** (`kind=internet`). Of it, the JSON returned to the caller was 2.5 KB per check | 20 checks of `https://example.com` within one second; Cloud Monitoring `run.googleapis.com/container/network/sent_bytes_count`. ⚠ The minute containing the batch read 84,681 bytes; ⚠ the minute before read 20,502 bytes that cannot be attributed to the batch with certainty, so the upper bound includes it |
+
+⚠ **These are one run each, from one client, on one day** (`evidence.md`). ⚠ **The client
+addresses seen are not recorded here** (`git.md`).
+⚠ **At those sizes, 1 GiB of egress is on the order of 200,000 checks.** ⚠ **That is arithmetic on
+the measurement above, not a measured monthly figure.**
 
 ## Rejected
 
