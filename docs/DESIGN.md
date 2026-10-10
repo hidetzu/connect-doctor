@@ -132,14 +132,21 @@ trust another CA, and no `InsecureSkipVerify`.** ⚠ **Tests give trust the way 
 |---|---|
 | `ok` | A status line was read. ⚠ **Any status, including 4xx / 5xx, is `ok` for connectivity** — the detail and conclusion still say what the status means |
 | `http.timeout` | No response before the deadline |
-| `http.malformed_response` | Bytes that are not an HTTP/1.x response |
+| `http.malformed_response` | Bytes that are not an HTTP/1.x response, ⚠ **including response headers over the 64 KiB cap** |
+| `http.no_response` | ⚠ **The connection closed (or reset) after the request with not one response byte** — owner decision, hidetzu/connect-doctor#4: ⚠ **nothing arrived ≠ malformed** ([`evidence.md`](../.claude/rules/evidence.md)) |
 | `http.too_many_redirects` | Redirect limit reached |
 | `http.redirect_refused` | ⚠ **A hop's URL was refused by policy** — ⚠ **the conclusion names the hop** |
 
 ⚠ **Why 5xx is `ok` at the HTTP layer**: the question is "why does it not connect". A 503 means
 it connected, and the server said it is unavailable. ⚠ **The conclusion says exactly that**, and
-the ladder shows HTTP ✅ with the status beside it. ⚠ **This is a wording choice a human may
-overturn** (listed in the bootstrap PR's open decisions).
+the ladder shows HTTP ✅ with the status beside it. ⚠ **Confirmed by the owner, 2026-10-10
+(hidetzu/connect-doctor#4).** ⚠ **An `ok` conclusion also says: if it does not connect from your
+machine, look at your side of the network** (`PRODUCT.md` § 6).
+
+⚠ **The request**: `GET`, `Host`, `User-Agent: ConnectDoctor/<version> (+repository URL)`,
+`Connection: close`, written with `(*http.Request).Write`; the response read with
+`http.ReadResponse` through one `io.LimitedReader` whose budget is the header cap, then the body cap
+(+1 byte, to know it was cut). ⚠ **That reader is the only cap.**
 
 ## 3. Timeouts and limits
 
@@ -266,7 +273,8 @@ once the API ships**; renaming one is a breaking change.
 
 - `conclusion.status` is one of `ok`, `failed`, `refused`, `incomplete`.
   ⚠ **`incomplete` means every step that ran succeeded and at least one step is
-  `not_implemented`.** ⚠ **Never `ok` while a layer was not checked** — ⚠ **"not checked" is not
+  `not_implemented`.** ⚠ **Since hidetzu/connect-doctor#4 every step is implemented, so no result
+  carries either today; both stay in the vocabulary for a step added later.** ⚠ **Never `ok` while a layer was not checked** — ⚠ **"not checked" is not
   "connected"** ([`evidence.md`](../.claude/rules/evidence.md)).
 - `conclusion.failed_step` is the **first** step, across all hops, whose status is `failed` or
   `refused`; absent on `ok`.
