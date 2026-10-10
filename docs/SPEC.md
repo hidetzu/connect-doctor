@@ -32,6 +32,7 @@ skipped.** ⚠ **Write that check early.**
 
 | Layer | What is supported | Which authority, which section | What asserts it |
 |---|---|---|---|
+| Input | ⚠ **Input without a scheme is checked as `https://`** (`example.com`, `example.com:443/x`); every refusal applies exactly as for the `https://` form; a scheme without `//` (`mailto:`, `javascript:`, `data:` …) is still a scheme and refused | owner decision on hidetzu/connect-doctor#42 | `internal/target` `TestBareHost`; final gate `TestRefusedURLsReachNothing` |
 | Input | `http`/`https` only; ports exactly 80/443; userinfo, local-only names, non-canonical numeric hosts and policy-refused IP literals refused, each with its code | `rules/security.md` § 2; RFC 6761 § 6.3, RFC 6762, RFC 8375; WHATWG URL § host parsing | `internal/target` `TestParseRefuses`, `TestParseAccepts` |
 | Policy | Only global unicast outside the IANA special-purpose "not globally reachable" ranges; IPv6 only within 2000::/3; IPv4-mapped unmapped first | RFC 6890 § 2.2.2; IANA special-purpose registries | `internal/policy` `TestAllowed` |
 | DNS | Absolute-name resolution; `dns.not_found` (NXDOMAIN or NODATA), `dns.timeout`, `dns.server_failure`; IPv4 first, deduplicated | `docs/DESIGN.md` § 2 | `internal/diag` `TestDNSOutcomes`, `TestDNSOkIsIncomplete`; final gate `TestDNSOutcomesThroughTheBinary` |

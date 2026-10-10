@@ -216,6 +216,8 @@ func TestRefusedURLsReachNothing(t *testing.T) {
 		"http://ok.test:8080/",
 		"http://2130706433/",
 		"file:///etc/passwd",
+		"169.254.169.254", // hidetzu/connect-doctor#42: refused without a scheme too
+		"localhost",
 	} {
 		code, res, _ := in.api(t, u)
 		if code != 400 || res.Conclusion.Status != diag.ConclusionRefused {

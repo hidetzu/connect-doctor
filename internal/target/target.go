@@ -9,6 +9,7 @@ package target
 import (
 	"net/netip"
 	"net/url"
+	"regexp"
 	"strings"
 
 	"github.com/hidetzu/connect-doctor/internal/limits"
@@ -59,6 +60,7 @@ func Parse(raw string) (Target, error) {
 	if len(raw) > limits.URLBytes {
 		return Target{}, &Refusal{CodeMalformed}
 	}
+	raw = withScheme(raw)
 	u, err := url.Parse(raw)
 	if err != nil {
 		return Target{}, &Refusal{CodeMalformed}
@@ -67,7 +69,6 @@ func Parse(raw string) (Target, error) {
 	switch scheme {
 	case "http", "https":
 	case "":
-		// "example.com" parses as a path. ⚠ We do not guess a scheme.
 		return Target{}, &Refusal{CodeMalformed}
 	default:
 		return Target{}, &Refusal{CodeUnsupportedScheme}
@@ -129,6 +130,42 @@ func Parse(raw string) (Target, error) {
 	}
 	t.URL = n.String()
 	return t, nil
+}
+
+// schemePrefix matches a URL scheme and its colon (RFC 3986 § 3.1).
+var schemePrefix = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+.-]*:`)
+
+// withScheme puts "https://" in front of input typed without a scheme
+// (owner decision, hidetzu/connect-doctor#42). ⚠ "No scheme" is not "no ://":
+// mailto:x and javascript:x carry a scheme and are left alone, to be refused as
+// unsupported. A leading name followed by ":" and a digit is a host and port
+// (example.com:8080), and one followed by "...@" is user:pass@host, not a
+// scheme — unless it is a known scheme. ⚠ Every refusal below still applies.
+func withScheme(raw string) string {
+	if strings.Contains(raw, "://") {
+		return raw
+	}
+	if m := schemePrefix.FindString(raw); m != "" {
+		rest := raw[len(m):]
+		switch {
+		case knownSchemes[strings.ToLower(strings.TrimSuffix(m, ":"))]:
+			return raw // refused below as an unsupported scheme
+		case rest != "" && rest[0] >= '0' && rest[0] <= '9':
+			// host:port
+		case strings.Contains(strings.SplitN(rest, "/", 2)[0], "@"):
+			// user:pass@host — refused below for its credentials
+		default:
+			return raw
+		}
+	}
+	return "https://" + raw
+}
+
+// knownSchemes are schemes people paste that have no "//": always a scheme,
+// never a username (so mailto:a@b is refused as a scheme, not as credentials).
+var knownSchemes = map[string]bool{
+	"mailto": true, "javascript": true, "data": true, "file": true, "tel": true, "sms": true,
+	"about": true, "blob": true, "vbscript": true, "news": true, "urn": true, "magnet": true,
 }
 
 // checkName validates a DNS host name and returns it lower-case without a
