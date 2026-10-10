@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/hidetzu/connect-doctor/internal/diag"
+	"github.com/hidetzu/connect-doctor/internal/limits"
 	"github.com/hidetzu/connect-doctor/internal/tlstest"
 )
 
@@ -153,4 +154,23 @@ func TestLogsCarryNoQueryString(t *testing.T) {
 	if n := strings.Count(logs.String(), "\n"); n != 2 {
 		t.Errorf("log has %d lines, want 2:\n%s", n, logs.String())
 	}
+}
+
+// hidetzu/connect-doctor#26 AC 3: the production bound, not a test-sized one.
+func TestProductionConcurrencyBound(t *testing.T) {
+	r := blockingResolver{entered: make(chan struct{}), release: make(chan struct{})}
+	s := New(&diag.Checker{Resolver: r, Dial: pipeDial}, log.New(io.Discard, "", 0))
+	h := s.Handler()
+	var wg sync.WaitGroup
+	for i := 0; i < limits.ConcurrentChecks; i++ {
+		wg.Add(1)
+		go func() { defer wg.Done(); get(t, h, "/api/check?url=http://ok.test/") }()
+		<-r.entered
+	}
+	resp, body := get(t, h, "/api/check?url=http://ok.test/")
+	if resp.StatusCode != http.StatusServiceUnavailable || !strings.Contains(body, "server.busy") {
+		t.Errorf("check %d: %d %s, want 503 server.busy", limits.ConcurrentChecks+1, resp.StatusCode, body)
+	}
+	close(r.release)
+	wg.Wait()
 }

@@ -156,21 +156,22 @@ machine, look at your side of the network** (`PRODUCT.md` § 6).
 
 ## 3. Timeouts and limits
 
-⚠ **All of these are budgets we chose, not measurements.** ⚠ **They live in one place in the code
+⚠ **All of these are budgets we chose, not measurements.** ⚠ **Tightened 2026-10-10 as part of the
+abuse limits ([`adr/0010`](adr/0010-abuse-limits-protect-targets-first-with-one-in-memory-limiter-per-question.md)).** ⚠ **They live in one place in the code
 (`internal/limits`) and nowhere else.**
 
 | Limit | Value | Why this value |
 |---|---|---|
-| DNS | 3 s | Pure-Go resolver retries within it |
-| TCP per attempt / total | 4 s / 6 s | Two attempts fit |
-| TLS | 5 s | |
-| HTTP (headers) | 8 s | |
-| Whole check, all hops | 20 s | ⚠ **Hard ceiling, enforced by one context** |
-| Redirect hops | 5 | |
+| DNS | 2 s | Pure-Go resolver retries within it |
+| TCP per attempt / total | 3 s / 4 s | Two attempts fit |
+| TLS | 3 s | |
+| HTTP (headers) | 4 s | |
+| Whole check, all hops | 10 s | ⚠ **Hard ceiling, enforced by one context** |
+| Redirect hops | 3 | |
 | Response headers | 64 KiB | |
 | Response body read | 64 KiB, then closed | ⚠ **Read only to observe that a body arrived** |
 | URL length | 2048 bytes | |
-| Concurrent checks per server | 16 | ⚠ **Bounds what one instance can be made to do at once** |
+| Concurrent checks per server | 8 | ⚠ **Bounds what one instance can be made to do at once** |
 
 ## 4. Threat model — SSRF first
 

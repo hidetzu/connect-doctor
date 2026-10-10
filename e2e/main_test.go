@@ -261,7 +261,7 @@ func serveHTTP(addr string, cert *tls.Certificate) error {
 		case "slowhop.test":
 			// Each hop answers just inside limits.HTTP, so only the whole-check
 			// ceiling (limits.Check) can stop the chain.
-			time.Sleep(6 * time.Second)
+			time.Sleep(3 * time.Second)
 			w.Header().Set("Location", "/next"+strconv.Itoa(len(r.URL.Path)))
 			w.WriteHeader(http.StatusFound)
 		default:

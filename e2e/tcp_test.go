@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/hidetzu/connect-doctor/internal/diag"
+	"github.com/hidetzu/connect-doctor/internal/limits"
 )
 
 // hidetzu/connect-doctor#2, AC 2, 3, 5.
@@ -46,9 +47,9 @@ func TestTCPTimeoutIsBounded(t *testing.T) {
 	if res.Conclusion.Code != "tcp.timeout" {
 		t.Errorf("drop.test: %+v, want tcp.timeout", res.Conclusion)
 	}
-	// limits.TCPAttempt is 4 s; allow scheduling slack but not the 20 s ceiling.
-	if took < 3*time.Second || took > 8*time.Second {
-		t.Errorf("drop.test took %s, want about 4 s", took)
+	// ⚠ Bounded by limits.TCPAttempt; slack for scheduling, never the whole-check ceiling.
+	if took < limits.TCPAttempt-time.Second || took > limits.TCPAttempt+3*time.Second {
+		t.Errorf("drop.test took %s, want about %s", took, limits.TCPAttempt)
 	}
 }
 
