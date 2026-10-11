@@ -41,8 +41,8 @@ func TestPageVisualLanguage(t *testing.T) {
 		if c.stopped != "" && !strings.Contains(page, `<li class="`+c.stopped+`">`) {
 			t.Errorf("%s: no step marked %q", c.url, c.stopped)
 		}
-		if !strings.Contains(page, diag.Tagline) || !strings.Contains(page, diag.PrivacyNote()) || !strings.Contains(page, diag.SourceURL) {
-			t.Errorf("%s: tagline, privacy note or source link missing", c.url)
+		if !strings.Contains(page, diag.Tagline) || !strings.Contains(page, diag.PrivacyNote()) || strings.Contains(page, "ソースコード") {
+			t.Errorf("%s: tagline or privacy note missing, or the source link is back", c.url)
 		}
 		if !strings.Contains(page, "Tokyo, Japan から観測") {
 			t.Errorf("%s: the chip does not name the vantage", c.url)

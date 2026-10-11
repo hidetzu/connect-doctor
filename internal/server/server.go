@@ -200,7 +200,6 @@ type pageData struct {
 	Vantage    string
 	Tagline    string
 	Privacy    string
-	Source     string
 	Public     string
 }
 
@@ -209,7 +208,7 @@ func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Security-Policy", pageCSP)
 
-	d := pageData{Note: diag.ObservedFromNote, AboutTitle: diag.AboutTitle, Vantage: s.vantage, Tagline: diag.Tagline, Privacy: diag.PrivacyNote(), Source: diag.SourceURL, Public: s.public}
+	d := pageData{Note: diag.ObservedFromNote, AboutTitle: diag.AboutTitle, Vantage: s.vantage, Tagline: diag.Tagline, Privacy: diag.PrivacyNote(), Public: s.public}
 	if _, asked := r.URL.Query()["url"]; asked {
 		d.Input = r.URL.Query().Get("url")
 		dec, ok := s.admit(w, r, d.Input)
@@ -245,7 +244,6 @@ type aboutData struct {
 	Sections []diag.AboutSection
 	Vantage  string
 	Privacy  string
-	Source   string
 }
 
 // handleAbout renders /about (owner decision 2026-10-11): what ConnectDoctor
@@ -255,7 +253,7 @@ func (s *Server) handleAbout(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Security-Policy", pageCSP)
-	d := aboutData{Title: diag.AboutTitle, Lede: diag.AboutLede, Sections: diag.About(s.public), Vantage: s.vantage, Privacy: diag.PrivacyNote(), Source: diag.SourceURL}
+	d := aboutData{Title: diag.AboutTitle, Lede: diag.AboutLede, Sections: diag.About(s.public), Vantage: s.vantage, Privacy: diag.PrivacyNote()}
 	if err := s.about.Execute(w, d); err != nil {
 		s.log.Printf("about: %v", err)
 	}

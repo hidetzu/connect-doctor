@@ -247,9 +247,6 @@ func lastStatusCode(r Result) int {
 // Tagline is the owner's one-line description, under the header.
 const Tagline = "URLがなぜ繋がらないのかを、DNS → TCP → TLS → HTTP の順に調べて答えます。"
 
-// SourceURL is where the code lives.
-const SourceURL = "https://github.com/hidetzu/connect-doctor"
-
 // PrivacyNote says what happens to a URL, and ⚠ only what is true of the
 // running service: the platform's request log keeps the URL for a while (Cloud
 // Run records the full request URL; owner decision 2026-10-11 to keep that log
