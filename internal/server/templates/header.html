@@ -1,0 +1,5 @@
+{{/* The one header: the brand (a link home) and the vantage chip (docs/adr/0001). ⚠ Two copies would drift. */}}
+{{define "header"}}<header class="top">
+  <a class="brand" href="/"><span aria-hidden="true">{{icon}}</span>ConnectDoctor</a>
+  <span class="chip"><b>{{if .Vantage}}{{.Vantage}} から観測{{else}}ConnectDoctorのサーバから観測{{end}}</b><small>あなたのPCからの接続結果ではありません</small></span>
+</header>{{end}}

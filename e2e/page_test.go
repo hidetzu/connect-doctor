@@ -52,3 +52,21 @@ func TestPageVisualLanguage(t *testing.T) {
 		}
 	}
 }
+
+// /about through the binary (owner decision 2026-10-11): served, named after
+// the vantage, linked from the index, and the API example uses -public-url.
+func TestAboutThroughTheBinary(t *testing.T) {
+	in := start(t, "-vantage", "Tokyo, Japan", "-public-url", "https://cd.example")
+	resp, page := in.fetch(t, "/about", nextClient())
+	if resp.StatusCode != 200 || !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/html") {
+		t.Fatalf("/about: %d %q", resp.StatusCode, resp.Header.Get("Content-Type"))
+	}
+	for _, want := range []string{diag.AboutTitle, "Tokyo, Japan から観測", "https://cd.example/api/check?url=https://example.com", diag.About("")[0].Items[0], diag.PrivacyNote()} {
+		if !strings.Contains(page, want) {
+			t.Errorf("/about does not contain %q", want)
+		}
+	}
+	if index := in.page(t, "/"); !strings.Contains(index, `<a href="/about">`+diag.AboutTitle+`</a>`) {
+		t.Error("the index does not link /about")
+	}
+}

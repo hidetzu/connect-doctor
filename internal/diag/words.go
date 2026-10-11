@@ -282,3 +282,65 @@ func RateLimited(reason string, seconds int) string {
 	}
 	return "あなたの診断回数が上限に達しました。" + which + "あと " + strconv.Itoa(seconds) + " 秒で、もう一度診断できます。"
 }
+
+// ---- What /about says (owner decision 2026-10-11) ----
+
+// AboutSection is one heading of /about and the sentences under it.
+type AboutSection struct {
+	Title string
+	Items []string
+	Code  string // a command to show under the sentences, or empty
+}
+
+// AboutTitle is the page's own name.
+const AboutTitle = "ConnectDoctorについて"
+
+// AboutLede is the one line under the heading: what this page is for.
+const AboutLede = "ConnectDoctorが何を調べ、どう読み、何を断るかを説明します。"
+
+// About is the visitor's rendering of docs/PRODUCT.md § 4–6 and docs/SPEC.md
+// § 2, in the order CLAUDE.md § 4-1 asks for: what this does first, then what
+// it declines, each with its reason and what to do instead.
+// base is the public origin for the API example, or empty for a relative path.
+// ⚠ Every number comes from internal/limits. ⚠ When PRODUCT, SPEC § 2 or a
+// limit changes, these sentences change with it — a test pins the numbers.
+func About(base string) []AboutSection {
+	return []AboutSection{
+		{Title: "何を調べるか", Items: []string{
+			"URLを1つ受け取り、ConnectDoctorのサーバから次の4つの層を順に試して、最初に止まった層とその意味を一文で答えます。",
+			"DNS — ホスト名をIPアドレスに解決します。名前が登録されていない、DNSサーバが応答しない、といった失敗はここで分かります。",
+			"TCP — 解決したアドレスの80番または443番ポートに接続します。接続拒否やタイムアウトはここで分かります。",
+			"TLS — https:// のURLでは、TLSハンドシェイクを行い、サーバ証明書をホスト名に対して検証します。期限切れ、名前の不一致、信頼できない発行者はここで分かります。http:// のURLではこの層は対象外です。",
+			"HTTP — GETリクエストを1回送り、ステータス行とヘッダを読みます。応答が返らない、HTTPとして読めない、はここで分かります。4xx や 5xx のステータスは「サーバが応答した」のでこの層としては成功で、その意味は結論に書きます。",
+			"リダイレクト（301/302/303/307/308）はたどります。たどった先のURLも最初の4層からやり直し、1つずつ結果を並べます。たどるのは" + strconv.Itoa(limits.RedirectHops) + "回までです。",
+		}},
+		{Title: "結果の読み方", Items: []string{
+			"結論は、最初に止まった層とその意味を一文で示します。ある層で止まると、その先の層は試しません（— と表示します）。",
+			"各層の印は 4 種類です。✓ はその層を通過、✕ はその層で失敗、⊘ はConnectDoctorが自分の方針で接続しなかった印（診断先の問題ではありません）、— は試さなかった印です。",
+			"色は状態を表し、層は表しません。緑はすべて通過、黄はサーバが 4xx・5xx を返した、赤はどこかの層で失敗、灰はConnectDoctorが接続しなかった、です。",
+			"同じURLは、短い間だけ前回の結果をそのまま表示します。そのときは「N秒前の診断結果です」と表示し、再診断のリンクを出します。",
+			"「詳細」を開くと、解決したアドレス、各層の所要時間、証明書の内容、ステータス行とヘッダの抜粋が見えます。",
+		}},
+		{Title: "どこから観測しているか", Items: []string{
+			"すべての結果はConnectDoctorのサーバから観測したもので、あなたのPCからの接続結果ではありません。",
+			"ここから繋がっても、あなたから繋がるとは限りません。社内プロキシ、VPN、ローカルのDNS設定、手元のファイアウォールは、ここからは見えません。",
+			"ここから失敗しても、サイトが落ちているとは限りません。診断先がConnectDoctorの接続元を遮断している、経路が違う、ということもあります。",
+		}},
+		{Title: "診断しないもの", Items: []string{
+			"ConnectDoctorが答える質問は「このURLはなぜ繋がらないか」だけです。速さの計測、脆弱性やTLS設定の採点、稼働監視、経路の追跡、所有者の照会は行いません。それぞれ別の質問で、専用のツールがあります。",
+			"接続するのはポート80と443だけです。ほかのポートを診断すると、ConnectDoctorが他人のサーバのポートスキャンに使えてしまうためです。",
+			"プライベート・ループバック・リンクローカルなど、公開されていないアドレスには接続しません。ホスト名がそうしたアドレスに解決された場合も、そのホスト名ごと接続しません。リダイレクト先についても同じです。",
+			"localhost や .local など、特定のネットワークの中でしか意味を持たない名前、ユーザー名やパスワードを含むURLも診断しません。",
+			"日本語ドメインなどの国際化ドメイン名には、まだ対応していません。xn-- で始まる形式（Punycode）で入力してください。",
+			"HTTPは HTTP/1.1 で1回だけ要求します。HTTP/2 でしか応答しないサーバは、まだ正しく診断できません。",
+		}},
+		{Title: "利用回数の制限", Items: []string{
+			"診断先のサーバに負担をかけないため、1人が診断できる回数には上限があります。続けて" + strconv.Itoa(limits.ClientBurst) + "回まで、1時間に" + strconv.Itoa(limits.ClientPerHour) + "回まで、1日に" + strconv.Itoa(limits.ClientPerDay) + "回までで、同時に進められる診断は" + strconv.Itoa(limits.ClientConcurrent) + "つです。上限に達したときは、あと何秒待てばよいかを表示します。",
+			"同じ診断先への診断が、誰からであっても短い時間に集中したときは、その診断先への接続を控えます。これは診断先の負担を避けるための制限で、サイト側の問題ではありません。",
+		}},
+		{Title: "プログラムから使う", Items: []string{
+			"ページと同じ結果を、JSONでも返します。診断先、各層の結果と所要時間、結論、観測地点の注記が含まれます。",
+			"入力したURLを診断しなかったときは 400、あなたの利用回数の上限に達したときは 429（Retry-After ヘッダに待ち秒数）、混み合っているときは 503 を返します。",
+		}, Code: "curl '" + base + "/api/check?url=https://example.com'"},
+	}
+}
