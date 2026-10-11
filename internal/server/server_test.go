@@ -420,17 +420,24 @@ func TestServiceIcon(t *testing.T) {
 	}
 }
 
-// hidetzu/connect-doctor#41: every page says what ConnectDoctor does, what
-// happens to the URL, and where the source is.
+// hidetzu/connect-doctor#41: every page says what ConnectDoctor does and what
+// happens to the URL. ⚠ The link to the source was removed (owner decision
+// 2026-10-11): no page links the repository.
 func TestTaglineAndFooter(t *testing.T) {
 	h := newTestServer(staticResolver{[]netip.Addr{netip.MustParseAddr("93.184.215.14")}}, io.Discard, 1).Handler()
-	for _, path := range []string{"/", "/?url=http://ok.test/", "/?url=http://127.0.0.1/"} {
+	for _, path := range []string{"/", "/?url=http://ok.test/", "/?url=http://127.0.0.1/", "/about"} {
 		_, page := get(t, h, path)
-		for _, want := range []string{diag.Tagline, diag.PrivacyNote(), `<a href="` + diag.SourceURL + `">`} {
+		for _, want := range []string{diag.PrivacyNote()} {
 			if !strings.Contains(page, want) {
 				t.Errorf("%s does not contain %q", path, want)
 			}
 		}
+		if strings.Contains(page, "github.com") || strings.Contains(page, "ソースコード") {
+			t.Errorf("%s links the source", path)
+		}
+	}
+	if _, page := get(t, h, "/"); !strings.Contains(page, diag.Tagline) {
+		t.Error("the index does not show the tagline")
 	}
 	// ⚠ The sentence states the cache's real duration.
 	// The request log keeps the URL (owner decision 2026-10-11), so the note
@@ -504,7 +511,7 @@ func TestAboutPage(t *testing.T) {
 	if resp.Header.Get("Content-Security-Policy") != pageCSP {
 		t.Errorf("/about CSP %q", resp.Header.Get("Content-Security-Policy"))
 	}
-	wants := []string{diag.AboutTitle, diag.AboutLede, "Tokyo, Japan から観測", diag.PrivacyNote(), `<a href="` + diag.SourceURL + `">`, `<a href="/">`,
+	wants := []string{diag.AboutTitle, diag.AboutLede, "Tokyo, Japan から観測", diag.PrivacyNote(), `<a href="/">`,
 		`curl &#39;https://cd.example/api/check?url=https://example.com&#39;`}
 	for _, sec := range diag.About("https://cd.example") {
 		wants = append(wants, sec.Title)
