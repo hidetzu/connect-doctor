@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/hidetzu/connect-doctor/internal/diag"
@@ -84,7 +85,7 @@ func TestAPIAndPageRenderTheSameResult(t *testing.T) {
 		t.Fatalf("api result: %+v", res)
 	}
 
-	resp, page := get(t, h, "/?url="+url.QueryEscape("http://ok.test/"))
+	resp, page := get(t, h, "/diagnose?url="+url.QueryEscape("http://ok.test/"))
 	if resp.StatusCode != 200 {
 		t.Fatalf("page: %d", resp.StatusCode)
 	}
@@ -102,14 +103,18 @@ func TestAPIAndPageRenderTheSameResult(t *testing.T) {
 }
 
 func TestPageWithoutURLShowsFormAndVantage(t *testing.T) {
-	_, page := get(t, newTestServer(staticResolver{}, io.Discard, 1).Handler(), "/")
-	for _, want := range []string{`<form method="get" action="/">`, "あなたのPCからの接続結果ではありません", `<div class="strip"`} {
-		if !strings.Contains(page, want) {
-			t.Errorf("page does not contain %q", want)
+	h := newTestServer(staticResolver{}, io.Discard, 1).Handler()
+	// ⚠ Both pages carry the one form, and it submits to /diagnose (hidetzu/connect-doctor#51).
+	for _, path := range []string{"/", "/diagnose"} {
+		_, page := get(t, h, path)
+		for _, want := range []string{`<form method="get" action="/diagnose">`, "あなたのPCからの接続結果ではありません", `<div class="strip"`} {
+			if !strings.Contains(page, want) {
+				t.Errorf("%s does not contain %q", path, want)
+			}
 		}
-	}
-	if strings.Contains(page, "結論") {
-		t.Error("page without a URL shows a conclusion")
+		if strings.Contains(page, `class="verdict`) {
+			t.Errorf("%s without a URL shows a conclusion card", path)
+		}
 	}
 }
 
@@ -144,7 +149,7 @@ func TestBusyIsNotATargetFailure(t *testing.T) {
 	if strings.Contains(body, "dns.") {
 		t.Errorf("busy answered as a DNS outcome: %s", body)
 	}
-	resp, page := get(t, h, "/?url=http://ok.test/")
+	resp, page := get(t, h, "/diagnose?url=http://ok.test/")
 	if resp.StatusCode != http.StatusServiceUnavailable || !strings.Contains(page, diag.Message("server.busy")) {
 		t.Errorf("page over the bound: %d", resp.StatusCode)
 	}
@@ -161,7 +166,7 @@ func TestLogsCarryNoQueryString(t *testing.T) {
 	h := newTestServer(staticResolver{[]netip.Addr{netip.MustParseAddr("93.184.215.14")}}, &logs, 1).Handler()
 	secret := "SECRET123"
 	get(t, h, "/api/check?url="+url.QueryEscape("http://x.test/?token="+secret))
-	get(t, h, "/?url="+url.QueryEscape("http://x.test/?token="+secret))
+	get(t, h, "/diagnose?url="+url.QueryEscape("http://x.test/?token="+secret))
 	if strings.Contains(logs.String(), secret) || strings.Contains(logs.String(), "x.test") {
 		t.Errorf("log leaks the checked URL:\n%s", logs.String())
 	}
@@ -231,7 +236,7 @@ func TestClientLimitAnswers429(t *testing.T) {
 	}
 	// The page is limited too, and says it is the visitor's limit and how long
 	// to wait (hidetzu/connect-doctor#43).
-	resp, page := getFrom(t, h, "/?url=http://okp.test/", "203.0.113.7")
+	resp, page := getFrom(t, h, "/diagnose?url=http://okp.test/", "203.0.113.7")
 	if resp.StatusCode != http.StatusTooManyRequests {
 		t.Errorf("page over the limit: %d", resp.StatusCode)
 	}
@@ -333,7 +338,7 @@ func TestRepeatedCheckIsAnsweredFromTheCache(t *testing.T) {
 	if a.Cached || !b.Cached || !a.CheckedAt.Equal(b.CheckedAt) {
 		t.Errorf("first cached=%v, second cached=%v, checked_at %s vs %s", a.Cached, b.Cached, a.CheckedAt, b.CheckedAt)
 	}
-	_, page := getFrom(t, h, "/?url=http://cache.test/", "198.51.100.3")
+	_, page := getFrom(t, h, "/diagnose?url=http://cache.test/", "198.51.100.3")
 	if d.n != 1 || !strings.Contains(page, "秒前の診断結果です") || !strings.Contains(page, "fresh=1") {
 		t.Errorf("page from the cache: connections %d, age line or 再診断 link missing", d.n)
 	}
@@ -425,7 +430,7 @@ func TestServiceIcon(t *testing.T) {
 // 2026-10-11): no page links the repository.
 func TestTaglineAndFooter(t *testing.T) {
 	h := newTestServer(staticResolver{[]netip.Addr{netip.MustParseAddr("93.184.215.14")}}, io.Discard, 1).Handler()
-	for _, path := range []string{"/", "/?url=http://ok.test/", "/?url=http://127.0.0.1/", "/about"} {
+	for _, path := range []string{"/", "/diagnose", "/diagnose?url=http://ok.test/", "/diagnose?url=http://127.0.0.1/"} {
 		_, page := get(t, h, path)
 		for _, want := range []string{diag.PrivacyNote()} {
 			if !strings.Contains(page, want) {
@@ -481,6 +486,9 @@ func TestOpenGraph(t *testing.T) {
 			t.Errorf("page lacks %s", want)
 		}
 	}
+	if _, diagnose := get(t, with, "/diagnose"); !strings.Contains(diagnose, `<meta property="og:url" content="https://cd.example/diagnose">`) {
+		t.Error("/diagnose's og:url is not its own path")
+	}
 	without := New(&diag.Checker{Resolver: r, Dial: pipeDial}, log.New(io.Discard, "", 0), Options{}).Handler()
 	_, page = get(t, without, "/")
 	if strings.Contains(page, "og:image") || strings.Contains(page, "og:url") || !strings.Contains(page, "og:description") {
@@ -496,31 +504,49 @@ func TestOpenGraph(t *testing.T) {
 	}
 }
 
-// /about (owner decision 2026-10-11): every sentence diag.About composes is on
-// the page, the numbers are internal/limits', the page starts no check, and
-// the index links to it.
-func TestAboutPage(t *testing.T) {
-	r := staticResolver{[]netip.Addr{netip.MustParseAddr("93.184.215.14")}}
+// countingResolver counts lookups, to prove a path resolved nothing.
+type countingResolver struct {
+	staticResolver
+	n atomic.Int32
+}
+
+func (r *countingResolver) LookupNetIP(ctx context.Context, network, host string) ([]netip.Addr, error) {
+	r.n.Add(1)
+	return r.staticResolver.LookupNetIP(ctx, network, host)
+}
+
+// The landing page (hidetzu/connect-doctor#51, candidate C, settled by
+// looking): every sentence diag composes is on it, the numbers are
+// internal/limits', it starts no check and spends no limit.
+func TestLandingPage(t *testing.T) {
+	r := &countingResolver{staticResolver: staticResolver{[]netip.Addr{netip.MustParseAddr("93.184.215.14")}}}
 	var logs bytes.Buffer
-	srv := New(&diag.Checker{Resolver: r, Dial: pipeDial}, log.New(&logs, "", 0), Options{PublicURL: "https://cd.example/", Vantage: "Tokyo, Japan"})
-	h := srv.Handler()
-	resp, page := get(t, h, "/about")
-	if resp.StatusCode != 200 || !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/html") {
-		t.Fatalf("/about: %d %q", resp.StatusCode, resp.Header.Get("Content-Type"))
+	h := New(&diag.Checker{Resolver: r, Dial: pipeDial}, log.New(&logs, "", 0), Options{PublicURL: "https://cd.example/", Vantage: "Tokyo, Japan"}).Handler()
+	resp, page := get(t, h, "/")
+	if resp.StatusCode != 200 || !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/html") || resp.Header.Get("Content-Security-Policy") != pageCSP {
+		t.Fatalf("/: %d %q CSP=%q", resp.StatusCode, resp.Header.Get("Content-Type"), resp.Header.Get("Content-Security-Policy"))
 	}
-	if resp.Header.Get("Content-Security-Policy") != pageCSP {
-		t.Errorf("/about CSP %q", resp.Header.Get("Content-Security-Policy"))
+	wants := []string{diag.HeroLede, diag.LayersTitle, diag.SymptomsTitle, "Tokyo, Japan から観測", diag.PrivacyNote(),
+		`<form method="get" action="/diagnose">`, `curl &#39;https://cd.example/api/check?url=https://example.com&#39;`}
+	for _, ph := range diag.HeroHeadline {
+		wants = append(wants, "<span>"+ph+"</span>")
 	}
-	wants := []string{diag.AboutTitle, diag.AboutLede, "Tokyo, Japan から観測", diag.PrivacyNote(), `<a href="/">`,
-		`curl &#39;https://cd.example/api/check?url=https://example.com&#39;`}
-	for _, sec := range diag.About("https://cd.example") {
+	wants = append(wants, diag.Trust...)
+	for _, l := range diag.Layers {
+		wants = append(wants, "<b>"+strings.ToUpper(l.Name)+"</b>", l.Short)
+	}
+	wants = append(wants, diag.Symptoms...)
+	for _, sec := range diag.Sections("https://cd.example") {
 		wants = append(wants, sec.Title)
 		wants = append(wants, sec.Items...)
 	}
 	for _, want := range wants {
 		if !strings.Contains(page, template.HTMLEscapeString(want)) && !strings.Contains(page, want) {
-			t.Errorf("/about does not contain %q", want)
+			t.Errorf("/ does not contain %q", want)
 		}
+	}
+	if strings.Contains(page, `class="verdict`) {
+		t.Error("the landing page shows a conclusion card")
 	}
 	// ⚠ The numbers are the limits', never typed in.
 	for _, want := range []string{
@@ -528,55 +554,86 @@ func TestAboutPage(t *testing.T) {
 		"1日に" + strconv.Itoa(limits.ClientPerDay) + "回まで", "たどるのは" + strconv.Itoa(limits.RedirectHops) + "回まで",
 	} {
 		if !strings.Contains(page, want) {
-			t.Errorf("/about does not say %q", want)
+			t.Errorf("/ does not say %q", want)
 		}
 	}
-	// What the page loads: nothing from another host (as the index, hidetzu/connect-doctor#29).
+	// What the page loads: nothing from another host (hidetzu/connect-doctor#29).
 	if strings.Contains(page, `src="http`) || regexp.MustCompile(`<link [^>]*href="http`).MatchString(page) {
-		t.Error("/about loads something from another host")
+		t.Error("/ loads something from another host")
 	}
 	// Without -public-url the example is a relative path; without -vantage no place is named.
-	_, plain := get(t, New(&diag.Checker{Resolver: r, Dial: pipeDial}, log.New(io.Discard, "", 0), Options{}).Handler(), "/about")
+	_, plain := get(t, New(&diag.Checker{Resolver: r, Dial: pipeDial}, log.New(io.Discard, "", 0), Options{}).Handler(), "/")
 	if !strings.Contains(plain, `curl &#39;/api/check?url=https://example.com&#39;`) || !strings.Contains(plain, "ConnectDoctorのサーバから観測") {
-		t.Error("/about without options: the example is not relative, or a place is named")
+		t.Error("/ without options: the example is not relative, or a place is named")
 	}
-	// /about starts no check and spends no limit: the burst is still whole afterwards.
+	// The landing page starts no check and spends no limit: the burst is still whole afterwards.
 	for i := 0; i < limits.ClientBurst+2; i++ {
-		get(t, h, "/about")
+		get(t, h, "/")
+	}
+	if n := r.n.Load(); n != 0 {
+		t.Errorf("the landing page resolved %d names", n)
 	}
 	for i := 0; i < limits.ClientBurst; i++ {
 		if resp, _ := get(t, h, "/api/check?url=http://ok"+strconv.Itoa(i)+".test/"); resp.StatusCode != 200 {
-			t.Fatalf("check %d after visiting /about: %d", i, resp.StatusCode)
+			t.Fatalf("check %d after visiting /: %d", i, resp.StatusCode)
 		}
 	}
 	if strings.Contains(logs.String(), "limit refused") {
-		t.Errorf("visiting /about spent a limit: %s", logs.String())
-	}
-	// The index links to it.
-	_, index := get(t, h, "/")
-	if !strings.Contains(index, `<a href="/about">`+diag.AboutTitle+`</a>`) {
-		t.Error("the index does not link /about")
+		t.Errorf("visiting / spent a limit: %s", logs.String())
 	}
 	// ⚠ The sentence about the marks restates glyph() and the cache line
-	// restates the index template; this is the mechanical cross-check that
+	// restates the diagnose template; this is the mechanical cross-check that
 	// keeps the copies together (CLAUDE.md § 3).
-	about := strings.Join(func() (all []string) {
-		for _, sec := range diag.About("") {
+	prose := strings.Join(func() (all []string) {
+		for _, sec := range diag.Sections("") {
 			all = append(all, sec.Items...)
 		}
 		return
 	}(), "\n")
 	for _, st := range []diag.Status{diag.StatusOK, diag.StatusFailed, diag.StatusRefused, diag.StatusSkipped} {
-		if !strings.Contains(about, glyph(st)+" は") {
-			t.Errorf("/about does not explain the mark %q for %s", glyph(st), st)
+		if !strings.Contains(prose, glyph(st)+" は") {
+			t.Errorf("/ does not explain the mark %q for %s", glyph(st), st)
 		}
 	}
-	if tmpl, _ := templates.ReadFile("templates/page.html"); !strings.Contains(about, "秒前の診断結果です") || !strings.Contains(string(tmpl), "秒前の診断結果です") {
-		t.Error("the cache sentence on /about and the index template no longer say the same thing")
+	if tmpl, _ := templates.ReadFile("templates/diagnose.html"); !strings.Contains(prose, "秒前の診断結果です") || !strings.Contains(string(tmpl), "秒前の診断結果です") {
+		t.Error("the cache sentence on / and the diagnose template no longer say the same thing")
 	}
-	// ⚠ No sentence opens with what does not work (CLAUDE.md § 4-1): the first
-	// section says what this does.
-	if first := diag.About("")[0]; !strings.HasPrefix(first.Items[0], "URLを1つ受け取り") {
-		t.Errorf("the first sentence of /about is %q", first.Items[0])
+	// The cards name the four steps in the order the check runs, by the steps' own names.
+	if got := []string{diag.Layers[0].Name, diag.Layers[1].Name, diag.Layers[2].Name, diag.Layers[3].Name}; strings.Join(got, " ") != "dns tcp tls http" {
+		t.Errorf("cards are %v", got)
+	}
+	// ⚠ Never open with what does not work (CLAUDE.md § 4-1): what is declined comes after how to read a result.
+	if secs := diag.Sections(""); secs[0].Title != "結果の読み方" {
+		t.Errorf("the first prose section is %q", secs[0].Title)
+	}
+}
+
+// Before hidetzu/connect-doctor#51 results lived at /?url=…; those links and
+// /about are sent on with a 301. ⚠ The redirect resolves nothing and spends
+// no limit.
+func TestOldURLsRedirect(t *testing.T) {
+	r := &countingResolver{staticResolver: staticResolver{[]netip.Addr{netip.MustParseAddr("93.184.215.14")}}}
+	var logs bytes.Buffer
+	h := New(&diag.Checker{Resolver: r, Dial: pipeDial}, log.New(&logs, "", 0), Options{}).Handler()
+	for path, want := range map[string]string{
+		"/?url=https%3A%2F%2Fexample.com%2Fa%3Fb%3Dc&fresh=1": "/diagnose?url=https%3A%2F%2Fexample.com%2Fa%3Fb%3Dc&fresh=1",
+		"/?url=": "/diagnose?url=",
+		"/about": "/",
+	} {
+		for i := 0; i < limits.ClientBurst+2; i++ {
+			resp, _ := get(t, h, path)
+			if resp.StatusCode != http.StatusMovedPermanently || resp.Header.Get("Location") != want {
+				t.Fatalf("%s: %d Location=%q, want 301 %q", path, resp.StatusCode, resp.Header.Get("Location"), want)
+			}
+		}
+	}
+	if n := r.n.Load(); n != 0 {
+		t.Errorf("redirects resolved %d names", n)
+	}
+	if resp, _ := get(t, h, "/api/check?url=http://ok.test/"); resp.StatusCode != 200 {
+		t.Errorf("after the redirects the first check is %d: a redirect spent the limit", resp.StatusCode)
+	}
+	if strings.Contains(logs.String(), "limit refused") {
+		t.Errorf("a redirect spent a limit: %s", logs.String())
 	}
 }

@@ -1,0 +1,6 @@
+{{/* The one input form and the four-step strip. ⚠ Both pages submit to /diagnose; the landing page never runs a check itself. */}}
+{{define "form"}}<form method="get" action="/diagnose">
+  <input id="url" name="url" inputmode="url" autocomplete="url" spellcheck="false" placeholder="https://example.com" value="{{.Input}}" aria-label="診断するURL" required>
+  <button type="submit">診断する</button>
+</form>
+<div class="strip" aria-hidden="true"><span>DNS</span><i></i><span>TCP</span><i></i><span>TLS</span><i></i><span>HTTP</span></div>{{end}}

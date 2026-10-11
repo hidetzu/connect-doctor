@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ja">
+<head>
+{{template "meta" .}}
+{{template "style"}}
+</head>
+<body>
+<main class="landing">
+{{template "header" .}}
+<h1 class="hero">{{range .Headline}}<span>{{.}}</span>{{end}}</h1>
+<p class="lede">{{.Lede}}</p>
+{{template "form" .}}
+<p class="trust">{{range .Trust}}<span>{{.}}</span>{{end}}</p>
+<section class="why">
+<h2>{{.LayersTitle}}</h2>
+<ul class="cards">{{range .Layers}}<li><b>{{upper .Name}}</b><span>{{.Short}}</span></li>{{end}}</ul>
+</section>
+<section class="when">
+<h2>{{.SymptomsTitle}}</h2>
+<ul>{{range .Symptoms}}<li>{{.}}</li>{{end}}</ul>
+</section>
+{{range .Sections}}<section class="prose">
+<h2>{{.Title}}</h2>
+<ul>{{range .Items}}<li>{{.}}</li>{{end}}</ul>
+{{with .Code}}<pre><code>{{.}}</code></pre>{{end}}
+</section>
+{{end}}
+<footer class="foot">
+  <p>{{.Privacy}}</p>
+</footer>
+</main>
+</body>
+</html>

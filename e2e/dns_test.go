@@ -269,16 +269,22 @@ func TestDNSOutcomesThroughTheBinary(t *testing.T) {
 func TestPage(t *testing.T) {
 	in := start(t)
 	page := in.page(t, "/")
-	for _, want := range []string{`<form method="get" action="/">`, "あなたのPCからの接続結果ではありません", `<div class="strip"`} {
+	for _, want := range []string{`<form method="get" action="/diagnose">`, "あなたのPCからの接続結果ではありません", `<div class="strip"`} {
 		if !strings.Contains(page, want) {
 			t.Errorf("/ does not contain %q", want)
 		}
 	}
-	page = in.page(t, "/?url="+url.QueryEscape("https://ok.test/"))
+	page = in.page(t, "/diagnose")
+	for _, want := range []string{`<form method="get" action="/diagnose">`, "あなたのPCからの接続結果ではありません", `<div class="strip"`} {
+		if !strings.Contains(page, want) {
+			t.Errorf("/diagnose does not contain %q", want)
+		}
+	}
+	page = in.page(t, "/diagnose?url="+url.QueryEscape("https://ok.test/"))
 	_, res, _ := in.api(t, "https://ok.test/")
 	for _, want := range []string{`class="verdict ok"`, diag.Headline(res), `<ol class="rail"`, "✓", "あなたのPCからの接続結果ではありません", "ms</span>"} {
 		if !strings.Contains(page, want) {
-			t.Errorf("/?url= does not contain %q", want)
+			t.Errorf("/diagnose?url= does not contain %q", want)
 		}
 	}
 }

@@ -39,7 +39,7 @@ func TestHTTPOutcomesThroughTheBinary(t *testing.T) {
 
 func TestHTTPBodyIsCapped(t *testing.T) {
 	in := start(t)
-	if page := in.page(t, "/?url=https://bigbody.test/"); !strings.Contains(page, "200 OK") || !strings.Contains(page, "上限で打ち切り") {
+	if page := in.page(t, "/diagnose?url=https://bigbody.test/"); !strings.Contains(page, "200 OK") || !strings.Contains(page, "上限で打ち切り") {
 		t.Error("the page does not show the status and the body cap")
 	}
 	_, res, _ := in.api(t, "https://bigbody.test/")

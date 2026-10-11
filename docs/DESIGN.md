@@ -224,9 +224,10 @@ internal/dial/            dialer whose Control hook calls policy on the real add
 internal/limits/          every timeout and cap, in one place (§ 3)
 internal/diag/            the steps: dns.go tcp.go tls.go http.go, and Check() that runs them
                           and follows redirects (T5,T6,T7). returns diag.Result
-internal/server/          GET /            page (html/template, no JS needed)
+internal/server/          GET /            landing page (html/template, no JS needed)
+                          GET /diagnose    the check and its result; /?url= and /about redirect here and to /
                           GET /api/check   JSON
-                          ⚠ both call diag.Check and render the same diag.Result
+                          ⚠ /diagnose and /api/check both call diag.Check and render the same diag.Result
 ```
 
 ```text

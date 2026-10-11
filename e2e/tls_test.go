@@ -52,7 +52,7 @@ func TestTLSDetailThroughTheBinary(t *testing.T) {
 		t.Fatalf("expired.test: the certificate's dates are missing: %+v", c)
 	}
 	// ⚠ The page shows the same dates the API returns, not just a sentence about them.
-	page := in.page(t, "/?url=https://expired.test/")
+	page := in.page(t, "/diagnose?url=https://expired.test/")
 	if !strings.Contains(page, c.Certificate.NotAfter) || !strings.Contains(page, "<code>expired.test</code>") {
 		t.Errorf("the page does not show the expired certificate's name and not_after %s", c.Certificate.NotAfter)
 	}
