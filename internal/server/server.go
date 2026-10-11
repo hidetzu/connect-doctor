@@ -177,6 +177,7 @@ func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 		s.release()
 		s.remember(raw, res)
 	}
+	s.logOutcome(res, hit)
 
 	status := http.StatusOK
 	switch {
@@ -221,12 +222,14 @@ func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
 			d.Busy = refusalMessage(dec)
 			w.WriteHeader(refusalStatus(dec))
 		} else if res, hit := s.cached(r, d.Input); hit {
+			s.logOutcome(res, true)
 			d.Result = &res
 			d.Age = int(time.Since(res.CheckedAt).Seconds())
 		} else if s.acquire() {
 			res := s.checker.Check(r.Context(), d.Input)
 			s.release()
 			s.remember(d.Input, res)
+			s.logOutcome(res, false)
 			d.Result = &res
 			if res.Conclusion.Code == diag.CodeTargetLimited {
 				s.targetLimited(w, r, res)
@@ -278,6 +281,93 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	if err := s.index.Execute(w, d); err != nil {
 		s.log.Printf("index: %v", err)
 	}
+}
+
+// logOutcome writes the one line a completed check gets (hidetzu/connect-doctor#55,
+// docs/adr/0010): what happened, so outcomes can be counted, and nothing that
+// names the target or the client. ⚠ The fields are the owner's list, exactly:
+// the conclusion code (the status, "ok", when the conclusion has no code), the
+// step the check stopped at or "none", the TCP outcome per address family on
+// the last hop, whether the answer came from the cache, and how many URLs the
+// check visited or named. ⚠ Never the URL, a hostname, an address or a client.
+// Limit refusals and "busy" never reach here: no check ran, and they have
+// their own line.
+func (s *Server) logOutcome(res diag.Result, cached bool) {
+	code := res.Conclusion.Code
+	if code == "" {
+		code = res.Conclusion.Status
+	}
+	stop := res.Conclusion.FailedStep
+	if stop == "" {
+		stop = "none"
+	}
+	hops := 0
+	for _, h := range res.Hops {
+		if h.URL != "" { // an input refusal has one hop with no URL: nothing was visited
+			hops++
+		}
+	}
+	v4, v6 := "none", "none"
+	if n := len(res.Hops); n > 0 {
+		v4, v6 = familyOutcomes(res.Hops[n-1])
+	}
+	s.log.Printf("check code=%s stop=%s v4=%s v6=%s cached=%t hops=%d", code, stop, v4, v6, cached, hops)
+}
+
+// familyOutcomes reads the hop's DNS addresses and TCP attempts and says, per
+// family: "ok" (an attempt connected), "failed" (attempted, none connected),
+// "untried" (an address existed, nothing was attempted: the normal case for
+// IPv6 when IPv4 connected first), or "none" (no address of that family).
+// ⚠ A refused address is absent from the result (docs/adr/0004), so it
+// counts as none here too.
+func familyOutcomes(h diag.Hop) (v4, v6 string) {
+	var has, tried, ok [2]bool
+	family := func(a string) int {
+		ip, err := netip.ParseAddr(a)
+		if err != nil {
+			ap, err := netip.ParseAddrPort(a) // attempts are written as address:port
+			if err != nil {
+				return -1
+			}
+			ip = ap.Addr()
+		}
+		if ip.Unmap().Is4() {
+			return 0
+		}
+		return 1
+	}
+	for _, st := range h.Steps {
+		if st.Detail == nil {
+			continue
+		}
+		for _, a := range st.Detail.Addresses {
+			if i := family(a); i >= 0 {
+				has[i] = true
+			}
+		}
+		for _, at := range st.Detail.Attempts {
+			i := family(at.Address)
+			if i < 0 || at.Outcome == diag.CodeTargetLimited {
+				continue // held back by the target limit: an address, but no attempt (docs/adr/0010)
+			}
+			tried[i] = true
+			if at.Outcome == "ok" {
+				ok[i] = true
+			}
+		}
+	}
+	word := func(i int) string {
+		switch {
+		case ok[i]:
+			return "ok"
+		case tried[i]:
+			return "failed"
+		case has[i]:
+			return "untried"
+		}
+		return "none"
+	}
+	return word(0), word(1)
 }
 
 // admit applies the per-client limits to a request that would start a check.
