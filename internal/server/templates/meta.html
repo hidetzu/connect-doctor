@@ -1,0 +1,15 @@
+{{/* The one <head>: title, icon, description and Open Graph. ⚠ og:url and og:image only from -public-url (hidetzu/connect-doctor#44). Path is the page's own path. */}}
+{{define "meta"}}<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ConnectDoctor</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<meta name="description" content="{{.Tagline}}">
+<meta property="og:type" content="website">
+<meta property="og:title" content="ConnectDoctor">
+<meta property="og:description" content="{{.Tagline}}">
+{{with .Public}}<meta property="og:url" content="{{.}}{{$.Path}}">
+<meta property="og:image" content="{{.}}/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+{{end}}{{end}}

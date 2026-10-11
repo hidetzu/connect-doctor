@@ -52,4 +52,21 @@ details { border-top:1px solid var(--line); padding:.35rem 0; font-size:.88rem; 
 dl { display:grid; grid-template-columns:max-content 1fr; gap:.15rem .9rem; margin:.4rem 0 .4rem .9rem; }
 dt { color:var(--muted); } dd { margin:0; overflow-wrap:anywhere; min-width:0; }
 .muted { color:var(--muted); font-size:.85rem; }
+/* Landing page (hidetzu/connect-doctor#51, candidate C, settled by looking). */
+.hero { margin:.2rem 0 .3rem; font-size:1.45rem; line-height:1.35; font-weight:700; }
+.hero span { display:inline-block; } /* break between phrases, never inside one */
+.hero + .lede { margin:0 0 .9rem; }
+.trust { margin:.5rem 0 0; color:var(--muted); font-size:.8rem; }
+.trust span + span::before { content:"・"; margin:0 .15em; }
+.landing h2 { margin:0 0 .6rem; font-size:.95rem; color:var(--muted); font-weight:600; }
+.why { margin:2rem 0 0; } .when, .prose { margin:1.8rem 0 0; }
+.cards { display:grid; grid-template-columns:repeat(2,1fr); gap:.6rem; list-style:none; margin:0; padding:0; }
+@media (min-width:600px) { .cards { grid-template-columns:repeat(4,1fr); } }
+.cards li { padding:.7rem .8rem; border:1px solid var(--line); border-radius:8px; background:var(--panel); }
+.cards b { display:block; font:600 .75rem var(--mono); letter-spacing:.05em; color:var(--accent); margin-bottom:.2rem; }
+.cards span { font-size:.85rem; line-height:1.5; }
+.when ul { margin:0; padding:0; list-style:none; display:grid; gap:.35rem; }
+.when li { padding:.45rem .7rem; border-left:3px solid var(--faint); background:var(--panel); font-size:.88rem; border-radius:0 6px 6px 0; }
+.prose ul { margin:0; padding-left:1.2rem; } .prose li { margin:.3rem 0; font-size:.92rem; }
+.prose pre { margin:.6rem 0 0; padding:.6rem .8rem; overflow-x:auto; background:var(--panel); border:1px solid var(--line); border-radius:6px; font:.85rem var(--mono); }
 </style>{{end}}

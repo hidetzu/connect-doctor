@@ -1,35 +1,18 @@
 <!doctype html>
 <html lang="ja">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ConnectDoctor</title>
-<link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<meta name="description" content="{{.Tagline}}">
-<meta property="og:type" content="website">
-<meta property="og:title" content="ConnectDoctor">
-<meta property="og:description" content="{{.Tagline}}">
-{{with .Public}}<meta property="og:url" content="{{.}}/">
-<meta property="og:image" content="{{.}}/og.png">
-<meta property="og:image:width" content="1200">
-<meta property="og:image:height" content="630">
-<meta name="twitter:card" content="summary_large_image">
-{{end}}
+{{template "meta" .}}
 {{template "style"}}
 </head>
 <body>
 <main>
 {{template "header" .}}
 <p class="lede">{{.Tagline}}</p>
-<form method="get" action="/">
-  <input name="url" inputmode="url" autocomplete="url" spellcheck="false" placeholder="https://example.com" value="{{.Input}}" aria-label="診断するURL" required>
-  <button type="submit">診断する</button>
-</form>
-<div class="strip" aria-hidden="true"><span>DNS</span><i></i><span>TCP</span><i></i><span>TLS</span><i></i><span>HTTP</span></div>
+{{template "form" .}}
 {{if .Busy}}<div class="busy"><p>{{.Busy}}</p></div>{{end}}
 {{with .Result}}
 <section class="verdict {{state .}}">
-  {{if .Cached}}<p class="age">{{$.Age}}秒前の診断結果です。<a href="/?url={{$.Input | urlquery}}&amp;fresh=1">再診断</a></p>{{end}}
+  {{if .Cached}}<p class="age">{{$.Age}}秒前の診断結果です。<a href="/diagnose?url={{$.Input | urlquery}}&amp;fresh=1">再診断</a></p>{{end}}
   <p class="h">{{headline .}}</p>
   <p class="c">{{cause .}}</p>
 </section>
@@ -53,7 +36,7 @@
 {{end}}
 <footer class="foot">
   <p>{{.Privacy}}</p>
-  <p><a href="/about">{{.AboutTitle}}</a></p>
+  <p><a href="/">{{.BackToTop}}</a></p>
 </footer>
 </main>
 </body>
