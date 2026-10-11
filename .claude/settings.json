@@ -11,6 +11,17 @@
             "timeout": 200
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "T=$(cat .flagman/task 2>/dev/null); PATH=\"$PATH:$HOME/go/bin\" flagman hook claude-code ${T:+--task \"$T\"}",
+            "timeout": 60,
+            "statusMessage": "flagman: should the AI go on alone?"
+          }
+        ]
       }
     ],
     "UserPromptSubmit": [
