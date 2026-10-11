@@ -22,7 +22,7 @@ import (
 	"github.com/hidetzu/connect-doctor/internal/target"
 )
 
-//go:embed templates/page.html
+//go:embed templates/*.html
 var templates embed.FS
 
 // icon is the service icon (hidetzu/connect-doctor#29, candidate A): four
@@ -47,6 +47,7 @@ type Server struct {
 	checker  *diag.Checker
 	log      *log.Logger
 	page     *template.Template
+	about    *template.Template
 	slots    chan struct{}
 	busy     atomic.Int64 // requests answered "busy"; counted, never shown to users
 	limiter  *ratelimit.Limiter
@@ -90,7 +91,7 @@ func New(c *diag.Checker, logger *log.Logger, opts Options) *Server {
 }
 
 func newWithSlots(c *diag.Checker, logger *log.Logger, slots int) *Server {
-	page := template.Must(template.New("page.html").Funcs(template.FuncMap{
+	funcs := template.FuncMap{
 		"glyph":     glyph,
 		"stepclass": stepClass,
 		"label":     diag.StatusLabel,
@@ -102,8 +103,11 @@ func newWithSlots(c *diag.Checker, logger *log.Logger, slots int) *Server {
 		"cause":     diag.Cause,
 		// ⚠ Our own embedded file, never request data.
 		"icon": func() template.HTML { return template.HTML(icon) },
-	}).ParseFS(templates, "templates/page.html"))
-	return &Server{checker: c, log: logger, page: page, slots: make(chan struct{}, slots)}
+	}
+	// ⚠ style.html is the one stylesheet; every page parses it alongside its own file.
+	page := template.Must(template.New("page.html").Funcs(funcs).ParseFS(templates, "templates/page.html", "templates/style.html"))
+	about := template.Must(template.New("about.html").Funcs(funcs).ParseFS(templates, "templates/about.html", "templates/style.html"))
+	return &Server{checker: c, log: logger, page: page, about: about, slots: make(chan struct{}, slots)}
 }
 
 // Busy returns how many requests were answered "busy" so far.
@@ -113,6 +117,7 @@ func (s *Server) Busy() int64 { return s.busy.Load() }
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", s.handlePage)
+	mux.HandleFunc("GET /about", s.handleAbout)
 	mux.HandleFunc("GET /api/check", s.handleAPI)
 	mux.HandleFunc("GET /favicon.svg", handleIcon)
 	mux.HandleFunc("GET /og.png", handleOGImage)
@@ -184,16 +189,17 @@ func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 }
 
 type pageData struct {
-	Note    string
-	Input   string
-	Result  *diag.Result
-	Busy    string
-	Age     int // seconds since a cached result was checked
-	Vantage string
-	Tagline string
-	Privacy string
-	Source  string
-	Public  string
+	Note       string
+	AboutTitle string
+	Input      string
+	Result     *diag.Result
+	Busy       string
+	Age        int // seconds since a cached result was checked
+	Vantage    string
+	Tagline    string
+	Privacy    string
+	Source     string
+	Public     string
 }
 
 func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
@@ -201,7 +207,7 @@ func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Security-Policy", pageCSP)
 
-	d := pageData{Note: diag.ObservedFromNote, Vantage: s.vantage, Tagline: diag.Tagline, Privacy: diag.PrivacyNote(), Source: diag.SourceURL, Public: s.public}
+	d := pageData{Note: diag.ObservedFromNote, AboutTitle: diag.AboutTitle, Vantage: s.vantage, Tagline: diag.Tagline, Privacy: diag.PrivacyNote(), Source: diag.SourceURL, Public: s.public}
 	if _, asked := r.URL.Query()["url"]; asked {
 		d.Input = r.URL.Query().Get("url")
 		dec, ok := s.admit(w, r, d.Input)
@@ -228,6 +234,28 @@ func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.page.Execute(w, d); err != nil {
 		s.log.Printf("page: %v", err)
+	}
+}
+
+type aboutData struct {
+	Title    string
+	Lede     string
+	Sections []diag.AboutSection
+	Vantage  string
+	Privacy  string
+	Source   string
+}
+
+// handleAbout renders /about (owner decision 2026-10-11): what ConnectDoctor
+// does, how to read a result, and what it declines. ⚠ It starts no check and
+// is never limited; every sentence is diag.About's.
+func (s *Server) handleAbout(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Content-Security-Policy", pageCSP)
+	d := aboutData{Title: diag.AboutTitle, Lede: diag.AboutLede, Sections: diag.About(s.public), Vantage: s.vantage, Privacy: diag.PrivacyNote(), Source: diag.SourceURL}
+	if err := s.about.Execute(w, d); err != nil {
+		s.log.Printf("about: %v", err)
 	}
 }
 

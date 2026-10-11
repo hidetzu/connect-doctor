@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"image/png"
 	"io"
 	"log"
@@ -345,15 +346,28 @@ func TestRepeatedCheckIsAnsweredFromTheCache(t *testing.T) {
 // hidetzu/connect-doctor#25 AC 3: colour encodes state, never a layer. The
 // stylesheet must name no step, and a step's class must be its status.
 func TestColourIsStateNotLayer(t *testing.T) {
-	b, err := templates.ReadFile("templates/page.html")
+	// ⚠ Every <style> in every template: the shared sheet and each page's own.
+	files, err := templates.ReadDir("templates")
 	if err != nil {
 		t.Fatal(err)
 	}
-	css := string(b)[strings.Index(string(b), "<style>"):strings.Index(string(b), "</style>")]
-	for _, layer := range []string{".dns", ".tcp", ".tls", ".http"} {
-		if strings.Contains(strings.ToLower(css), layer) {
-			t.Errorf("the stylesheet has a rule for %s", layer)
+	styles := 0
+	for _, f := range files {
+		b, err := templates.ReadFile("templates/" + f.Name())
+		if err != nil {
+			t.Fatal(err)
 		}
+		for _, css := range regexp.MustCompile(`(?s)<style>.*?</style>`).FindAllString(string(b), -1) {
+			styles++
+			for _, layer := range []string{".dns", ".tcp", ".tls", ".http"} {
+				if strings.Contains(strings.ToLower(css), layer) {
+					t.Errorf("%s: the stylesheet has a rule for %s", f.Name(), layer)
+				}
+			}
+		}
+	}
+	if styles == 0 {
+		t.Fatal("no <style> found in any template")
 	}
 	if got := stepClass(diag.Step{Step: diag.StepTLS, Status: diag.StatusFailed}); got != "failed" {
 		t.Errorf("a failed TLS step has class %q, want its status only", got)
@@ -472,5 +486,73 @@ func TestOpenGraph(t *testing.T) {
 	cfg, err := png.DecodeConfig(strings.NewReader(body))
 	if err != nil || cfg.Width != 1200 || cfg.Height != 630 {
 		t.Errorf("/og.png is %dx%d (%v), want 1200x630", cfg.Width, cfg.Height, err)
+	}
+}
+
+// /about (owner decision 2026-10-11): every sentence diag.About composes is on
+// the page, the numbers are internal/limits', the page starts no check, and
+// the index links to it.
+func TestAboutPage(t *testing.T) {
+	r := staticResolver{[]netip.Addr{netip.MustParseAddr("93.184.215.14")}}
+	var logs bytes.Buffer
+	srv := New(&diag.Checker{Resolver: r, Dial: pipeDial}, log.New(&logs, "", 0), Options{PublicURL: "https://cd.example/", Vantage: "Tokyo, Japan"})
+	h := srv.Handler()
+	resp, page := get(t, h, "/about")
+	if resp.StatusCode != 200 || !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/html") {
+		t.Fatalf("/about: %d %q", resp.StatusCode, resp.Header.Get("Content-Type"))
+	}
+	if resp.Header.Get("Content-Security-Policy") != pageCSP {
+		t.Errorf("/about CSP %q", resp.Header.Get("Content-Security-Policy"))
+	}
+	wants := []string{diag.AboutTitle, diag.AboutLede, "Tokyo, Japan から観測", diag.PrivacyNote(), `<a href="` + diag.SourceURL + `">`, `<a href="/">`,
+		`curl &#39;https://cd.example/api/check?url=https://example.com&#39;`}
+	for _, sec := range diag.About("https://cd.example") {
+		wants = append(wants, sec.Title)
+		wants = append(wants, sec.Items...)
+	}
+	for _, want := range wants {
+		if !strings.Contains(page, template.HTMLEscapeString(want)) && !strings.Contains(page, want) {
+			t.Errorf("/about does not contain %q", want)
+		}
+	}
+	// ⚠ The numbers are the limits', never typed in.
+	for _, want := range []string{
+		"続けて" + strconv.Itoa(limits.ClientBurst) + "回まで", "1時間に" + strconv.Itoa(limits.ClientPerHour) + "回まで",
+		"1日に" + strconv.Itoa(limits.ClientPerDay) + "回まで", "たどるのは" + strconv.Itoa(limits.RedirectHops) + "回まで",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("/about does not say %q", want)
+		}
+	}
+	// What the page loads: nothing from another host (as the index, hidetzu/connect-doctor#29).
+	if strings.Contains(page, `src="http`) || regexp.MustCompile(`<link [^>]*href="http`).MatchString(page) {
+		t.Error("/about loads something from another host")
+	}
+	// Without -public-url the example is a relative path; without -vantage no place is named.
+	_, plain := get(t, New(&diag.Checker{Resolver: r, Dial: pipeDial}, log.New(io.Discard, "", 0), Options{}).Handler(), "/about")
+	if !strings.Contains(plain, `curl &#39;/api/check?url=https://example.com&#39;`) || !strings.Contains(plain, "ConnectDoctorのサーバから観測") {
+		t.Error("/about without options: the example is not relative, or a place is named")
+	}
+	// /about starts no check and spends no limit: the burst is still whole afterwards.
+	for i := 0; i < limits.ClientBurst+2; i++ {
+		get(t, h, "/about")
+	}
+	for i := 0; i < limits.ClientBurst; i++ {
+		if resp, _ := get(t, h, "/api/check?url=http://ok"+strconv.Itoa(i)+".test/"); resp.StatusCode != 200 {
+			t.Fatalf("check %d after visiting /about: %d", i, resp.StatusCode)
+		}
+	}
+	if strings.Contains(logs.String(), "limit refused") {
+		t.Errorf("visiting /about spent a limit: %s", logs.String())
+	}
+	// The index links to it.
+	_, index := get(t, h, "/")
+	if !strings.Contains(index, `<a href="/about">`+diag.AboutTitle+`</a>`) {
+		t.Error("the index does not link /about")
+	}
+	// ⚠ No sentence opens with what does not work (CLAUDE.md § 4-1): the first
+	// section says what this does.
+	if first := diag.About("")[0]; !strings.HasPrefix(first.Items[0], "URLを1つ受け取り") {
+		t.Errorf("the first sentence of /about is %q", first.Items[0])
 	}
 }
