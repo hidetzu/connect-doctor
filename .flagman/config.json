@@ -1,0 +1,209 @@
+{
+  "version": 1,
+  "thresholds": {
+    "review": 30,
+    "defer": 60
+  },
+  "rules": {
+    "action.irreversible": {
+      "points": 100,
+      "hard": true,
+      "why": "merge, release, deploy, force-push, delete, migrate and sending data out cannot be walked back; the human gate sits there (.claude/rules/owner-decisions.md)"
+    },
+    "action.publishes": {
+      "points": 20,
+      "why": "push and PR are visible to others and leave history, but can be followed up"
+    },
+    "adr.names-changed-path": {
+      "points": 15,
+      "why": "a decision record that names a changed path is a boundary; read it before changing the path"
+    },
+    "diff.deletes-files": {
+      "points": 10,
+      "why": "deleted files are recoverable from git but easy to miss in review"
+    },
+    "diff.dependencies": {
+      "points": 15,
+      "why": "a dependency change brings in code and a licence nobody in this repository wrote"
+    },
+    "diff.large": {
+      "points": 15,
+      "why": "large changes are harder to review and more often fail (Ehsani et al. 2026, failed agent PRs are larger)"
+    },
+    "diff.no-tests": {
+      "points": 15,
+      "why": "code changed without a test changing leaves nothing behind that asserts the claim"
+    },
+    "diff.not-in-scope": {
+      "points": 20,
+      "why": "a change to a path outside the declared scope needs a human to widen the scope"
+    },
+    "diff.outside-scope": {
+      "points": 100,
+      "hard": true,
+      "why": "a change to a path the task names as out of scope crosses a boundary the owner drew"
+    },
+    "diff.sensitive-paths": {
+      "points": 0,
+      "why": "points come from the matching sensitive_paths group; this entry only switches the rule"
+    },
+    "external": {
+      "points": 0,
+      "why": "points come from each external finding; this entry only switches the rule"
+    },
+    "history.hotspot": {
+      "points": 10,
+      "why": "a path changed many times recently is where defects cluster (Tornhill, Your Code as a Crime Scene)"
+    },
+    "history.recent-revert": {
+      "points": 20,
+      "why": "a recent revert on the same path means the last attempt here was wrong"
+    },
+    "repo.default-branch": {
+      "points": 25,
+      "why": "committing on the default branch skips the review a branch gets (.claude/rules/git.md)"
+    },
+    "repo.not-obtained": {
+      "points": 20,
+      "why": "with no repository there is no diff, no history and no base to judge against"
+    },
+    "task.closed": {
+      "points": 100,
+      "hard": true,
+      "why": "work on a closed issue is work nobody asked for; confirm first"
+    },
+    "task.missing": {
+      "points": 15,
+      "why": "without a task there is no declared scope, so nothing bounds the change"
+    },
+    "task.no-acceptance-criteria": {
+      "points": 10,
+      "why": "without acceptance criteria nobody can say when it is done"
+    },
+    "task.no-scope": {
+      "points": 10,
+      "why": "scope and out-of-scope bound what may be touched; without them drift is invisible"
+    },
+    "task.open-decision": {
+      "points": 100,
+      "hard": true,
+      "why": "an unresolved owner decision means the owner has not decided; proceeding decides in their place"
+    },
+    "tests.failing": {
+      "points": 40,
+      "why": "failing tests before commit, push or merge is the clearest objective signal to stop"
+    },
+    "tests.not-obtained": {
+      "points": 10,
+      "why": "unknown is not pass; unmeasured evidence pushes toward asking (selective prediction: abstain when unsure)"
+    }
+  },
+  "sensitive_paths": [
+    {
+      "name": "flagman-config",
+      "patterns": [
+        ".flagman/**"
+      ],
+      "points": 60,
+      "why": "a change to the gate's own rules or thresholds is the owner's to make; an agent loosening its own gate is the case this tool exists for"
+    },
+    {
+      "name": "ci",
+      "patterns": [
+        ".github/**",
+        ".gitlab-ci.yml",
+        ".circleci/**",
+        "Jenkinsfile"
+      ],
+      "points": 20,
+      "why": "CI changes run with the repository's credentials"
+    },
+    {
+      "name": "secrets-and-auth",
+      "patterns": [
+        "**/auth/**",
+        "**/*secret*",
+        "**/*credential*",
+        "**/*password*",
+        "**/*.pem",
+        "**/*.key",
+        "**/oauth/**",
+        "**/security/**"
+      ],
+      "points": 25,
+      "why": "authentication and secrets are where a mistake is a breach"
+    },
+    {
+      "name": "database",
+      "patterns": [
+        "**/migrations/**",
+        "**/migrate/**",
+        "**/*.sql",
+        "**/schema/**"
+      ],
+      "points": 20,
+      "why": "schema changes are hard to walk back once applied"
+    },
+    {
+      "name": "infrastructure",
+      "patterns": [
+        "**/*.tf",
+        "**/terraform/**",
+        "**/k8s/**",
+        "**/helm/**",
+        "Dockerfile",
+        "**/Dockerfile",
+        "docker-compose*.yml",
+        "**/deploy/**"
+      ],
+      "points": 20,
+      "why": "infrastructure changes reach running systems"
+    },
+    {
+      "name": "billing",
+      "patterns": [
+        "**/billing/**",
+        "**/payment*/**",
+        "**/invoice*/**"
+      ],
+      "points": 25,
+      "why": "money moves"
+    },
+    {
+      "name": "licence-and-policy",
+      "patterns": [
+        "LICENSE*",
+        "SECURITY.md",
+        "CODE_OF_CONDUCT.md",
+        "docs/adr/**"
+      ],
+      "points": 15,
+      "why": "what the project promises outsiders is the owner's to change"
+    }
+  ],
+  "test_patterns": [
+    "**/*_test.go",
+    "**/*.test.*",
+    "**/*.spec.*",
+    "**/test/**",
+    "**/tests/**",
+    "**/__tests__/**",
+    "**/testdata/**",
+    "**/spec/**",
+    "**/e2e/**"
+  ],
+  "evidence": {
+    "history_window_days": 90,
+    "hotspot_touches": 5,
+    "large_change_files": 10,
+    "large_change_lines": 400,
+    "tests": {},
+    "adr_dir": "docs/adr"
+  },
+  "costs": {
+    "false_autonomy": 10,
+    "missed_escalation": 3,
+    "unnecessary_deferral": 1,
+    "over_review": 0.5
+  }
+}
