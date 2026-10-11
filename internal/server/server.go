@@ -104,9 +104,11 @@ func newWithSlots(c *diag.Checker, logger *log.Logger, slots int) *Server {
 		// ⚠ Our own embedded file, never request data.
 		"icon": func() template.HTML { return template.HTML(icon) },
 	}
-	// ⚠ style.html is the one stylesheet; every page parses it alongside its own file.
-	page := template.Must(template.New("page.html").Funcs(funcs).ParseFS(templates, "templates/page.html", "templates/style.html"))
-	about := template.Must(template.New("about.html").Funcs(funcs).ParseFS(templates, "templates/about.html", "templates/style.html"))
+	// ⚠ style.html and header.html are the one stylesheet and the one header;
+	// every page parses them alongside its own file.
+	shared := []string{"templates/style.html", "templates/header.html"}
+	page := template.Must(template.New("page.html").Funcs(funcs).ParseFS(templates, append([]string{"templates/page.html"}, shared...)...))
+	about := template.Must(template.New("about.html").Funcs(funcs).ParseFS(templates, append([]string{"templates/about.html"}, shared...)...))
 	return &Server{checker: c, log: logger, page: page, about: about, slots: make(chan struct{}, slots)}
 }
 

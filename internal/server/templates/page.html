@@ -19,10 +19,7 @@
 </head>
 <body>
 <main>
-<header class="top">
-  <span class="brand"><span aria-hidden="true">{{icon}}</span>ConnectDoctor</span>
-  <span class="chip"><b>{{if .Vantage}}{{.Vantage}} から観測{{else}}ConnectDoctorのサーバから観測{{end}}</b><small>あなたのPCからの接続結果ではありません</small></span>
-</header>
+{{template "header" .}}
 <p class="lede">{{.Tagline}}</p>
 <form method="get" action="/">
   <input name="url" inputmode="url" autocomplete="url" spellcheck="false" placeholder="https://example.com" value="{{.Input}}" aria-label="診断するURL" required>

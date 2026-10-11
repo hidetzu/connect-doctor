@@ -401,7 +401,7 @@ func TestServiceIcon(t *testing.T) {
 	if !strings.Contains(page, `<link rel="icon" href="/favicon.svg" type="image/svg+xml">`) {
 		t.Error("the page does not link the favicon")
 	}
-	if !strings.Contains(page, `<span class="brand"><span aria-hidden="true"><svg`) {
+	if !strings.Contains(page, `<a class="brand" href="/"><span aria-hidden="true"><svg`) {
 		t.Error("the header does not show the icon before the name")
 	}
 	csp := resp.Header.Get("Content-Security-Policy")
@@ -549,6 +549,23 @@ func TestAboutPage(t *testing.T) {
 	_, index := get(t, h, "/")
 	if !strings.Contains(index, `<a href="/about">`+diag.AboutTitle+`</a>`) {
 		t.Error("the index does not link /about")
+	}
+	// ⚠ The sentence about the marks restates glyph() and the cache line
+	// restates the index template; this is the mechanical cross-check that
+	// keeps the copies together (CLAUDE.md § 3).
+	about := strings.Join(func() (all []string) {
+		for _, sec := range diag.About("") {
+			all = append(all, sec.Items...)
+		}
+		return
+	}(), "\n")
+	for _, st := range []diag.Status{diag.StatusOK, diag.StatusFailed, diag.StatusRefused, diag.StatusSkipped} {
+		if !strings.Contains(about, glyph(st)+" は") {
+			t.Errorf("/about does not explain the mark %q for %s", glyph(st), st)
+		}
+	}
+	if tmpl, _ := templates.ReadFile("templates/page.html"); !strings.Contains(about, "秒前の診断結果です") || !strings.Contains(string(tmpl), "秒前の診断結果です") {
+		t.Error("the cache sentence on /about and the index template no longer say the same thing")
 	}
 	// ⚠ No sentence opens with what does not work (CLAUDE.md § 4-1): the first
 	// section says what this does.
