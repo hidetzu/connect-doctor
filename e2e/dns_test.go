@@ -10,6 +10,7 @@ package e2e
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -20,6 +21,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -29,8 +31,28 @@ import (
 )
 
 type instance struct {
-	base string
-	dns  *dnstest.Server
+	base   string
+	dns    *dnstest.Server
+	stderr *lockedBuffer // the binary's log, read by the tests that assert on it
+}
+
+// lockedBuffer is a bytes.Buffer the binary writes to from its own process
+// while a test reads it.
+type lockedBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (l *lockedBuffer) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.Write(p)
+}
+
+func (l *lockedBuffer) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.String()
 }
 
 // start builds the binary from this tree and runs it against a fresh fake DNS
@@ -98,7 +120,8 @@ func start(t *testing.T, extra ...string) *instance {
 	cmd := exec.Command(bin, append([]string{"-addr", "127.0.0.1:0", "-dns-server", dns.Addr(), "-trust-xff"}, extra...)...)
 	cmd.Env = append(os.Environ(), trustEnv...)
 	stdout, _ := cmd.StdoutPipe()
-	cmd.Stderr = io.Discard
+	stderr := &lockedBuffer{}
+	cmd.Stderr = stderr
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +140,7 @@ func start(t *testing.T, extra ...string) *instance {
 		if !ok {
 			t.Fatalf("unexpected first line: %q", line)
 		}
-		return &instance{base: base, dns: dns}
+		return &instance{base: base, dns: dns, stderr: stderr}
 	case <-time.After(10 * time.Second):
 		t.Fatal("binary did not announce its address")
 	}

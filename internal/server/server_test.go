@@ -170,9 +170,10 @@ func TestLogsCarryNoQueryString(t *testing.T) {
 	if strings.Contains(logs.String(), secret) || strings.Contains(logs.String(), "x.test") {
 		t.Errorf("log leaks the checked URL:\n%s", logs.String())
 	}
-	// ⚠ Control: the log did receive the requests.
-	if n := strings.Count(logs.String(), "\n"); n != 2 {
-		t.Errorf("log has %d lines, want 2:\n%s", n, logs.String())
+	// ⚠ Control: the log did receive the requests: one request line and one
+	// outcome line (hidetzu/connect-doctor#55) for each.
+	if n := strings.Count(logs.String(), "\n"); n != 4 {
+		t.Errorf("log has %d lines, want 4:\n%s", n, logs.String())
 	}
 }
 
@@ -304,6 +305,27 @@ func TestTargetLimitAnswers429(t *testing.T) {
 	}
 	if !strings.Contains(logs.String(), "limit refused=target target=victim.test client=198.51.100.0/24") {
 		t.Errorf("log: %s", logs.String())
+	}
+	// hidetzu/connect-doctor#55: the held-back check still gets its outcome line.
+	// The hostname budget stops a hop before anything is resolved, so no
+	// address of either family is known: none, not failed.
+	if l := logs.String(); !strings.Contains(l, "check code=server.target_rate_limited stop=none v4=none v6=none cached=false hops=1") {
+		t.Errorf("no outcome line for the host-limited check:\n%s", l)
+	}
+	// The destination budget (limits.TargetDestBurst attempts to one address:port,
+	// whoever asks) stops an attempt AFTER resolving: the address is known and
+	// was not tried, so the family reads "untried", never "failed".
+	var dest bytes.Buffer
+	dh := New(&diag.Checker{Resolver: r, Dial: pipeDial}, log.New(&dest, "", 0), Options{TrustXFF: true}).Handler()
+	n := 0
+	for host := 0; n <= limits.TargetDestBurst; host++ {
+		for i := 0; i < limits.TargetHostBurst && n <= limits.TargetDestBurst; i++ {
+			n++
+			getFrom(t, dh, "/api/check?fresh=1&url="+url.QueryEscape(fmt.Sprintf("http://d%d.test/", host)), fmt.Sprintf("198.51.100.%d", n))
+		}
+	}
+	if l := dest.String(); !strings.Contains(l, "check code=server.target_rate_limited ") || !strings.Contains(l, " v4=untried v6=none cached=false hops=1") || strings.Contains(l, "v4=failed") {
+		t.Errorf("the destination-limited check's line is not v4=untried:\n%s", l)
 	}
 	for _, leak := range []string{"SECRET9", "/p?", "198.51.100.99"} {
 		if strings.Contains(logs.String(), leak) {
@@ -635,5 +657,67 @@ func TestOldURLsRedirect(t *testing.T) {
 	}
 	if strings.Contains(logs.String(), "limit refused") {
 		t.Errorf("a redirect spent a limit: %s", logs.String())
+	}
+}
+
+// hidetzu/connect-doctor#55: one line per completed check, with the owner's
+// fields and nothing that names the target or the client.
+func TestOutcomeLine(t *testing.T) {
+	v4only := staticResolver{[]netip.Addr{netip.MustParseAddr("93.184.215.14")}}
+	dual := staticResolver{[]netip.Addr{netip.MustParseAddr("93.184.215.14"), netip.MustParseAddr("2606:2800:21f:cb07:6820:80da:af6b:8b2c")}}
+	checkLines := func(logs string) []string {
+		var out []string
+		for _, l := range strings.Split(logs, "\n") {
+			if strings.HasPrefix(l, "check ") {
+				out = append(out, l)
+			}
+		}
+		return out
+	}
+	// Criteria 1, 3, 4 and the dual-stack "untried" (owner decision 4), through the API.
+	var logs bytes.Buffer
+	h := New(&diag.Checker{Resolver: v4only, Dial: pipeDial}, log.New(&logs, "", 0), Options{}).Handler()
+	get(t, h, "/api/check?url=http://ok.test/")
+	get(t, h, "/api/check?url=http://127.0.0.1/")
+	get(t, h, "/api/check?url=http://ok.test/") // the cache answers this one
+	get(t, New(&diag.Checker{Resolver: dual, Dial: pipeDial}, log.New(&logs, "", 0), Options{}).Handler(), "/api/check?url=http://dual.test/")
+	want := []string{
+		"check code=ok stop=none v4=ok v6=none cached=false hops=1",
+		"check code=input.refused_address stop=none v4=none v6=none cached=false hops=0",
+		"check code=ok stop=none v4=ok v6=none cached=true hops=1",
+		"check code=ok stop=none v4=ok v6=untried cached=false hops=1",
+	}
+	if got := checkLines(logs.String()); strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Errorf("check lines:\n got %q\nwant %q", got, want)
+	}
+	// The page writes the same lines as the API (fresh, then cached).
+	var pageLogs bytes.Buffer
+	ph := New(&diag.Checker{Resolver: v4only, Dial: pipeDial}, log.New(&pageLogs, "", 0), Options{}).Handler()
+	get(t, ph, "/diagnose?url=http://ok.test/")
+	get(t, ph, "/diagnose?url=http://ok.test/")
+	if got := checkLines(pageLogs.String()); strings.Join(got, "|") != want[0]+"|"+want[2] {
+		t.Errorf("page check lines: %q", got)
+	}
+	// Criterion 6: a limit refusal (429) and a busy answer (503) write no check line.
+	var limited bytes.Buffer
+	lh := limitedServer(&limited, true)
+	for i := 0; i <= limits.ClientBurst; i++ {
+		getFrom(t, lh, "/api/check?url=http://ok"+strconv.Itoa(i)+".test/", "203.0.113.9")
+	}
+	if n := len(checkLines(limited.String())); n != limits.ClientBurst {
+		t.Errorf("%d check lines over the burst, want %d (the 429 writes none)", n, limits.ClientBurst)
+	}
+	var busy bytes.Buffer
+	if resp, _ := get(t, newTestServer(v4only, &busy, 0).Handler(), "/api/check?url=http://ok.test/"); resp.StatusCode != http.StatusServiceUnavailable || len(checkLines(busy.String())) != 0 {
+		t.Errorf("busy: %d, %d check lines", resp.StatusCode, len(checkLines(busy.String())))
+	}
+	// Criterion 7: nothing in any captured log names a target, an address or a client.
+	all := logs.String() + pageLogs.String() + limited.String() + busy.String()
+	for _, leak := range []string{"ok.test", "dual.test", "127.0.0.1", "93.184.215.14", "2606:2800", "http://", "203.0.113", "198.18."} {
+		for _, l := range checkLines(all) {
+			if strings.Contains(l, leak) {
+				t.Errorf("a check line carries %q: %s", leak, l)
+			}
+		}
 	}
 }

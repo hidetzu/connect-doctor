@@ -16,7 +16,10 @@ Four layers, built in this order (one issue each):
 
 Over a limit: `429` + `Retry-After`, a `server.*` code, neutral, worded as ConnectDoctor's limit.
 ⚠ **Logged only when a limit fires**: the target hostname and the client prefix (IPv4 /24,
-IPv6 /48). ⚠ **Never path, query, or a full address.** Ordinary use is not logged.
+IPv6 /48). ⚠ **Never path, query, or a full address.** Ordinary use is counted by outcome only
+(hidetzu/connect-doctor#55, owner decision 2026-10-11): one line per completed check with the
+conclusion code, the step it stopped at, the TCP outcome per address family, whether it came from
+the cache and the hop count — ⚠ **neither the target hostname nor the client is recorded.**
 
 ## Why
 
