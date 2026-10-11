@@ -46,8 +46,8 @@ const pageCSP = "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; 
 type Server struct {
 	checker  *diag.Checker
 	log      *log.Logger
-	page     *template.Template
-	about    *template.Template
+	page     *template.Template // /diagnose
+	index    *template.Template // the landing page
 	slots    chan struct{}
 	busy     atomic.Int64 // requests answered "busy"; counted, never shown to users
 	limiter  *ratelimit.Limiter
@@ -104,12 +104,12 @@ func newWithSlots(c *diag.Checker, logger *log.Logger, slots int) *Server {
 		// ⚠ Our own embedded file, never request data.
 		"icon": func() template.HTML { return template.HTML(icon) },
 	}
-	// ⚠ style.html and header.html are the one stylesheet and the one header;
-	// every page parses them alongside its own file.
-	shared := []string{"templates/style.html", "templates/header.html"}
-	page := template.Must(template.New("page.html").Funcs(funcs).ParseFS(templates, append([]string{"templates/page.html"}, shared...)...))
-	about := template.Must(template.New("about.html").Funcs(funcs).ParseFS(templates, append([]string{"templates/about.html"}, shared...)...))
-	return &Server{checker: c, log: logger, page: page, about: about, slots: make(chan struct{}, slots)}
+	// ⚠ The shared files are the one <head>, the one stylesheet, the one header
+	// and the one form; every page parses them alongside its own file.
+	shared := []string{"templates/meta.html", "templates/style.html", "templates/header.html", "templates/form.html"}
+	page := template.Must(template.New("diagnose.html").Funcs(funcs).ParseFS(templates, append([]string{"templates/diagnose.html"}, shared...)...))
+	index := template.Must(template.New("index.html").Funcs(funcs).ParseFS(templates, append([]string{"templates/index.html"}, shared...)...))
+	return &Server{checker: c, log: logger, page: page, index: index, slots: make(chan struct{}, slots)}
 }
 
 // Busy returns how many requests were answered "busy" so far.
@@ -118,8 +118,10 @@ func (s *Server) Busy() int64 { return s.busy.Load() }
 // Handler returns the routes.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /{$}", s.handlePage)
-	mux.HandleFunc("GET /about", s.handleAbout)
+	mux.HandleFunc("GET /{$}", s.handleIndex)
+	mux.HandleFunc("GET /diagnose", s.handlePage)
+	// /about was absorbed into the landing page (hidetzu/connect-doctor#51).
+	mux.HandleFunc("GET /about", func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/", http.StatusMovedPermanently) })
 	mux.HandleFunc("GET /api/check", s.handleAPI)
 	mux.HandleFunc("GET /favicon.svg", handleIcon)
 	mux.HandleFunc("GET /og.png", handleOGImage)
@@ -191,24 +193,26 @@ func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 }
 
 type pageData struct {
-	Note       string
-	AboutTitle string
-	Input      string
-	Result     *diag.Result
-	Busy       string
-	Age        int // seconds since a cached result was checked
-	Vantage    string
-	Tagline    string
-	Privacy    string
-	Public     string
+	Note      string
+	Path      string
+	BackToTop string
+	Input     string
+	Result    *diag.Result
+	Busy      string
+	Age       int // seconds since a cached result was checked
+	Vantage   string
+	Tagline   string
+	Privacy   string
+	Public    string
 }
 
+// handlePage is /diagnose: the input, and the result when url is given.
 func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Security-Policy", pageCSP)
 
-	d := pageData{Note: diag.ObservedFromNote, AboutTitle: diag.AboutTitle, Vantage: s.vantage, Tagline: diag.Tagline, Privacy: diag.PrivacyNote(), Public: s.public}
+	d := pageData{Note: diag.ObservedFromNote, Path: "/diagnose", BackToTop: diag.BackToTop, Vantage: s.vantage, Tagline: diag.Tagline, Privacy: diag.PrivacyNote(), Public: s.public}
 	if _, asked := r.URL.Query()["url"]; asked {
 		d.Input = r.URL.Query().Get("url")
 		dec, ok := s.admit(w, r, d.Input)
@@ -238,24 +242,41 @@ func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-type aboutData struct {
-	Title    string
-	Lede     string
-	Sections []diag.AboutSection
-	Vantage  string
-	Privacy  string
+type indexData struct {
+	Path          string
+	Input         string // always empty: the form on the landing page starts blank
+	Headline      []string
+	Lede          string
+	Trust         []string
+	LayersTitle   string
+	Layers        []diag.Layer
+	SymptomsTitle string
+	Symptoms      []string
+	Sections      []diag.Section
+	Vantage       string
+	Tagline       string
+	Privacy       string
+	Public        string
 }
 
-// handleAbout renders /about (owner decision 2026-10-11): what ConnectDoctor
-// does, how to read a result, and what it declines. ⚠ It starts no check and
-// is never limited; every sentence is diag.About's.
-func (s *Server) handleAbout(w http.ResponseWriter, _ *http.Request) {
+// handleIndex renders the landing page (hidetzu/connect-doctor#51, candidate
+// C): what ConnectDoctor finds, the input (which submits to /diagnose), and the
+// prose /about used to hold. ⚠ It starts no check and spends no limit.
+// ⚠ A result URL from before the split (/?url=…) is sent to /diagnose with
+// the same query: no check runs here, so nothing is spent on the redirect.
+func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
+	if _, asked := r.URL.Query()["url"]; asked {
+		http.Redirect(w, r, "/diagnose?"+r.URL.RawQuery, http.StatusMovedPermanently)
+		return
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Security-Policy", pageCSP)
-	d := aboutData{Title: diag.AboutTitle, Lede: diag.AboutLede, Sections: diag.About(s.public), Vantage: s.vantage, Privacy: diag.PrivacyNote()}
-	if err := s.about.Execute(w, d); err != nil {
-		s.log.Printf("about: %v", err)
+	d := indexData{Path: "/", Headline: diag.HeroHeadline, Lede: diag.HeroLede, Trust: diag.Trust, LayersTitle: diag.LayersTitle, Layers: diag.Layers,
+		SymptomsTitle: diag.SymptomsTitle, Symptoms: diag.Symptoms, Sections: diag.Sections(s.public),
+		Vantage: s.vantage, Tagline: diag.Tagline, Privacy: diag.PrivacyNote(), Public: s.public}
+	if err := s.index.Execute(w, d); err != nil {
+		s.log.Printf("index: %v", err)
 	}
 }
 

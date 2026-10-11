@@ -280,41 +280,73 @@ func RateLimited(reason string, seconds int) string {
 	return "あなたの診断回数が上限に達しました。" + which + "あと " + strconv.Itoa(seconds) + " 秒で、もう一度診断できます。"
 }
 
-// ---- What /about says (owner decision 2026-10-11) ----
+// ---- What the landing page says (hidetzu/connect-doctor#51, owner decisions 2026-10-11) ----
 
-// AboutSection is one heading of /about and the sentences under it.
-type AboutSection struct {
+// Section is one heading of the landing page and the sentences under it.
+type Section struct {
 	Title string
 	Items []string
 	Code  string // a command to show under the sentences, or empty
 }
 
-// AboutTitle is the page's own name.
-const AboutTitle = "ConnectDoctorについて"
+// Layer is one of the four layers as the landing page's cards name it:
+// the protocol's own name and one line on what the layer answers.
+type Layer struct {
+	Name  string
+	Short string
+}
 
-// AboutLede is the one line under the heading: what this page is for.
-const AboutLede = "ConnectDoctorが何を調べ、どう読み、何を断るかを説明します。"
+// HeroHeadline is the landing page's first line, PRODUCT § 1 said to the reader.
+// ⚠ One element per phrase: the page keeps each phrase on one line, so a
+// narrow screen breaks between phrases and never inside one.
+var HeroHeadline = []string{"繋がらないURLの原因を、", "どの層で止まったかで", "答えます"}
 
-// About is the visitor's rendering of docs/PRODUCT.md § 4–6 and docs/SPEC.md
-// § 2, in the order CLAUDE.md § 4-1 asks for: what this does first, then what
-// it declines, each with its reason and what to do instead.
-// base is the public origin for the API example, or empty for a relative path.
+// HeroLede is the line under the headline.
+const HeroLede = "DNS → TCP → TLS → HTTP の順に、ConnectDoctorのサーバから実際に試します。"
+
+// Trust is the line under the input: three things that are true of the service.
+var Trust = []string{"無料", "登録不要", "数秒で結果"}
+
+// LayersTitle heads the four cards; SymptomsTitle heads the symptom list;
+// BackToTop is the link from /diagnose to the landing page.
+const (
+	LayersTitle   = "この診断でわかること"
+	SymptomsTitle = "こんなときに"
+	BackToTop     = "トップへ"
+)
+
+// Layers are the four cards, in the order the check runs.
+var Layers = []Layer{
+	{StepDNS, "名前がアドレスに解決できるか"},
+	{StepTCP, "80 / 443 番ポートに接続できるか"},
+	{StepTLS, "証明書がこのホスト名で有効か"},
+	{StepHTTP, "応答が返るか、何番のステータスか"},
+}
+
+// Symptoms are the situations the tool is for, in the reader's words.
+var Symptoms = []string{
+	"DNS を変えたのに、反映されていない気がする",
+	"証明書を更新したのに、警告が消えない",
+	"社内からは開けるのに、外からは開けない",
+	"リダイレクトがループしている気がする",
+	"curl -v の出力を、どこから読めばいいか分からない",
+}
+
+// Sections are the landing page's prose after the cards: the visitor's
+// rendering of docs/PRODUCT.md § 4–6 and docs/SPEC.md § 2, in the order
+// CLAUDE.md § 4-1 asks for: what this does first, then what it declines, each
+// with its reason and what to do instead. base is the public origin for the
+// API example, or empty for a relative path.
 // ⚠ Every number comes from internal/limits. ⚠ When PRODUCT, SPEC § 2 or a
 // limit changes, these sentences change with it — a test pins the numbers.
-func About(base string) []AboutSection {
-	return []AboutSection{
-		{Title: "何を調べるか", Items: []string{
-			"URLを1つ受け取り、ConnectDoctorのサーバから次の4つの層を順に試して、最初に止まった層とその意味を一文で答えます。",
-			"DNS — ホスト名をIPアドレスに解決します。名前が登録されていない、DNSサーバが応答しない、といった失敗はここで分かります。",
-			"TCP — 解決したアドレスの80番または443番ポートに接続します。接続拒否やタイムアウトはここで分かります。",
-			"TLS — https:// のURLでは、TLSハンドシェイクを行い、サーバ証明書をホスト名に対して検証します。期限切れ、名前の不一致、信頼できない発行者はここで分かります。http:// のURLではこの層は対象外です。",
-			"HTTP — GETリクエストを1回送り、ステータス行とヘッダを読みます。応答が返らない、HTTPとして読めない、はここで分かります。4xx や 5xx のステータスは「サーバが応答した」のでこの層としては成功で、その意味は結論に書きます。",
-			"リダイレクト（301/302/303/307/308）はたどります。たどった先のURLも最初の4層からやり直し、1つずつ結果を並べます。たどるのは" + strconv.Itoa(limits.RedirectHops) + "回までです。",
-		}},
+func Sections(base string) []Section {
+	return []Section{
 		{Title: "結果の読み方", Items: []string{
 			"結論は、最初に止まった層とその意味を一文で示します。ある層で止まると、その先の層は試しません（— と表示します）。",
 			"各層の印は 4 種類です。✓ はその層を通過、✕ はその層で失敗、⊘ はConnectDoctorが自分の方針で接続しなかった印（診断先の問題ではありません）、— は試さなかった印です。",
 			"色は状態を表し、層は表しません。緑はすべて通過、黄はサーバが 4xx・5xx を返した、赤はどこかの層で失敗、灰はConnectDoctorが接続しなかった、です。",
+			"http:// のURLでは TLS の層は対象外です。4xx や 5xx のステータスは「サーバが応答した」ので HTTP の層としては成功で、その意味は結論に書きます。",
+			"リダイレクト（301/302/303/307/308）はたどります。たどった先のURLも最初の4層からやり直し、1つずつ結果を並べます。たどるのは" + strconv.Itoa(limits.RedirectHops) + "回までです。",
 			"同じURLは、短い間だけ前回の結果をそのまま表示します。そのときは「N秒前の診断結果です」と表示し、再診断のリンクを出します。",
 			"「詳細」を開くと、解決したアドレス、各層の所要時間、証明書の内容、ステータス行とヘッダの抜粋が見えます。",
 		}},

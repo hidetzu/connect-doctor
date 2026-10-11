@@ -23,7 +23,7 @@ func TestCacheThroughTheBinary(t *testing.T) {
 	if n := cachedAccepts.Load() - before; n != 1 || !second.Cached || !second.CheckedAt.Equal(first.CheckedAt) {
 		t.Errorf("repeat: %d connections, cached=%v, checked_at %s vs %s", n, second.Cached, second.CheckedAt, first.CheckedAt)
 	}
-	page := in.page(t, "/?url="+url.QueryEscape("https://cached.test/"))
+	page := in.page(t, "/diagnose?url="+url.QueryEscape("https://cached.test/"))
 	if !strings.Contains(page, "秒前の診断結果です") || !strings.Contains(page, "fresh=1") {
 		t.Error("the page does not show the age line and the 再診断 link")
 	}

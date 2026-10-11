@@ -27,15 +27,18 @@ the failing layer. ⚠ **The API and the page return the same diagnosis** (§ 4,
 ## 3. The user flow (MVP)
 
 ```text
-1. open the page             one input box. ⚠ a line above it: "checked from ConnectDoctor's server"
-2. paste a URL, submit
+1. open the page             one input box in the first screen. ⚠ a line above it: "checked from ConnectDoctor's server"
+                             below it, what the four layers find and when to use this (hidetzu/connect-doctor#51)
+2. paste a URL, submit       → /diagnose, the page that runs the check
 3. read the ladder           DNS ✅  TCP ✅  TLS ❌  HTTP —
 4. read the conclusion       one sentence: which layer, what happened, what to look at next
 5. (optional) open details   resolved addresses, timings, the certificate error, the status line
 ```
 
 ⚠ **Step 3 is the product.** ⚠ **If a user has to open details to know which layer failed, the
-page has failed.**
+page has failed.** ⚠ **The input box stays in the first screen of the first page** — the landing
+page explains, it never hides the input behind a button (owner decision 2026-10-11, settled by
+looking).
 
 The same flow without a browser:
 
