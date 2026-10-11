@@ -680,8 +680,7 @@ func TestOutcomeLine(t *testing.T) {
 	get(t, h, "/api/check?url=http://ok.test/")
 	get(t, h, "/api/check?url=http://127.0.0.1/")
 	get(t, h, "/api/check?url=http://ok.test/") // the cache answers this one
-	_, dualLogs := get(t, New(&diag.Checker{Resolver: dual, Dial: pipeDial}, log.New(&logs, "", 0), Options{}).Handler(), "/api/check?url=http://dual.test/")
-	_ = dualLogs
+	get(t, New(&diag.Checker{Resolver: dual, Dial: pipeDial}, log.New(&logs, "", 0), Options{}).Handler(), "/api/check?url=http://dual.test/")
 	want := []string{
 		"check code=ok stop=none v4=ok v6=none cached=false hops=1",
 		"check code=input.refused_address stop=none v4=none v6=none cached=false hops=0",
