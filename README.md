@@ -1,5 +1,7 @@
 # ConnectDoctor
 
+[![check](https://github.com/hidetzu/connect-doctor/actions/workflows/check.yml/badge.svg?branch=main)](https://github.com/hidetzu/connect-doctor/actions/workflows/check.yml?query=branch%3Amain)
+
 > **Why does this URL not connect?** One URL in, one answer out.
 
 ## Why ConnectDoctor exists
