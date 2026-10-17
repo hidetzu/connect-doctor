@@ -37,7 +37,10 @@ gcloud auth configure-docker $REGION-docker.pkg.dev
 ### Release from GitHub Actions (once; [`adr/0011`](adr/0011-a-merge-to-main-releases-itself-through-a-candidate-revision-and-only-dependabot-merges-itself.md))
 
 ```sh
-gcloud services enable iamcredentials.googleapis.com sts.googleapis.com --project $PROJECT
+# ⚠ cloudresourcemanager: § 3 reads the project IAM policy as the deployer, and the deployer's
+#   calls count against this project, so the API must be on here (it failed without, 2026-10-17).
+gcloud services enable iamcredentials.googleapis.com sts.googleapis.com cloudresourcemanager.googleapis.com \
+  --project $PROJECT
 
 # ⚠ Public access is granted once here, so a release never needs to set IAM on the service.
 gcloud run services add-iam-policy-binding $SERVICE --region $REGION --project $PROJECT \

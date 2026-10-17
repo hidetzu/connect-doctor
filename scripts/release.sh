@@ -93,9 +93,17 @@ check)
     || bad "metadata.google.internal refused" "$(head -c 300 <<<"$body")"
 
   # ⚠ The runtime account must still have no role bindings (adr/0008).
-  roles=$(gcloud projects get-iam-policy "$PROJECT" --flatten=bindings \
-    --filter="bindings.members:serviceAccount:$SA@" --format='value(bindings.role)')
-  [ -z "$roles" ] && ok "runtime account has no roles" || bad "runtime account has no roles" "$roles"
+  # ⚠ Could not read the policy ≠ no roles (evidence.md): a failed read is a FAIL with its
+  #   error, ⚠ and must not end the script before the count is announced.
+  #   stderr is kept apart: a gcloud warning there must not read as a role.
+  err=$(mktemp)
+  if roles=$(gcloud projects get-iam-policy "$PROJECT" --flatten=bindings --quiet \
+      --filter="bindings.members:serviceAccount:$SA@" --format='value(bindings.role)' 2>"$err"); then
+    [ -z "$roles" ] && ok "runtime account has no roles" || bad "runtime account has no roles" "$roles"
+  else
+    bad "runtime account has no roles" "could not read the IAM policy: $(grep ERROR "$err" | head -1)"
+  fi
+  rm -f "$err"
 
   echo "release: check — $pass passed, $fails failed"
   [ $fails = 0 ]
