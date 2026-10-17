@@ -1,0 +1,32 @@
+{
+ "protection": {
+  "enabled": true,
+  "required_status_checks": {
+   "enforcement_level": "everyone",
+   "contexts": [
+    "fast",
+    "final",
+    "image",
+    "review"
+   ],
+   "checks": [
+    {
+     "context": "fast",
+     "app_id": 15368
+    },
+    {
+     "context": "final",
+     "app_id": 15368
+    },
+    {
+     "context": "image",
+     "app_id": 15368
+    },
+    {
+     "context": "review",
+     "app_id": 15368
+    }
+   ]
+  }
+ }
+}

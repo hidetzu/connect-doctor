@@ -1,0 +1,17 @@
+# case	sha the checks ran on	the line decide must print
+merge-all-green	2a787a3000000000000000000000000000000000	merge
+skip-already-merged	2a787a3000000000000000000000000000000000	skip: not open
+skip-human-author	2a787a3000000000000000000000000000000000	skip: opened by hidetzu (User), not the dependabot[bot] app
+skip-user-named-like-bot	2a787a3000000000000000000000000000000000	skip: opened by dependabot[bot] (User), not the dependabot[bot] app
+skip-fork	2a787a3000000000000000000000000000000000	skip: head is in another repository
+skip-branch	2a787a3000000000000000000000000000000000	skip: head branch feature/x is not dependabot/*
+skip-head-moved	2a787a3000000000000000000000000000000000	skip: head moved to fffffff after the checks ran on 2a787a3
+skip-base	2a787a3000000000000000000000000000000000	skip: base is release, not main
+skip-extra-commit	2a787a3000000000000000000000000000000000	skip: commits by hidetzu as well as dependabot[bot]
+skip-unknown-commit-author	2a787a3000000000000000000000000000000000	skip: commits by unknown as well as dependabot[bot]
+skip-review-running	2a787a3000000000000000000000000000000000	skip: review is in_progress
+skip-review-missing	2a787a3000000000000000000000000000000000	skip: review has not reported
+skip-image-failed	2a787a3000000000000000000000000000000000	skip: image concluded failure
+skip-fast-from-other-app	2a787a3000000000000000000000000000000000	skip: fast has not reported
+skip-nonrequired-failed	2a787a3000000000000000000000000000000000	skip: extra concluded failure
+skip-no-protection	2a787a3000000000000000000000000000000000	skip: no required checks could be read from branch protection

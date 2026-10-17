@@ -1,0 +1,21 @@
+{
+ "state": "open",
+ "merged": false,
+ "base": {
+  "ref": "main",
+  "repo": {
+   "full_name": "hidetzu/connect-doctor"
+  }
+ },
+ "user": {
+  "login": "dependabot[bot]",
+  "type": "Bot"
+ },
+ "head": {
+  "ref": "feature/x",
+  "sha": "2a787a3000000000000000000000000000000000",
+  "repo": {
+   "full_name": "hidetzu/connect-doctor"
+  }
+ }
+}

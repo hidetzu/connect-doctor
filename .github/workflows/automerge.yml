@@ -1,0 +1,47 @@
+# Dependabot pull requests merge themselves once every required check is
+# green, then start the release (docs/adr/0011, hidetzu/connect-doctor#62).
+# Every other author is merged by the owner.
+#
+# ⚠ workflow_run runs in this repository's context with a write token, so
+#   nothing from the pull request is checked out or run here: the checkout is
+#   main, and every fact about the pull request comes from the GitHub API
+#   (scripts/automerge.sh decide).
+# ⚠ It fires once per finished workflow; the first finish usually finds the
+#   other still running and skips, the last one merges.
+name: automerge
+
+on:
+  workflow_run:
+    workflows: [check, review]
+    types: [completed]
+
+# ⚠ One decision per head at a time: two finishing workflows must not both merge.
+concurrency:
+  group: automerge-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  automerge:
+    if: >-
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      startsWith(github.event.workflow_run.head_branch, 'dependabot/')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    # ⚠ This job can merge: its actions are pinned to full commit SHAs.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Decide and merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: scripts/automerge.sh run "$HEAD_SHA"
