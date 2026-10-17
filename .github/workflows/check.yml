@@ -1,4 +1,4 @@
-# The fast tier and the final gate, on every PR and on main
+# The fast tier, the final gate and the image tier, on every PR and on main
 # (.claude/skills/verify/SKILL.md § 6).
 #
 # ⚠ The external tier never runs here: it depends on third parties' uptime
@@ -25,6 +25,14 @@ jobs:
         with:
           node-version: 22
       - run: scripts/verify.sh fast
+
+  # ⚠ The image Cloud Run runs, built with the Go in the Dockerfile, not the
+  #   Go in go.mod (hidetzu/connect-doctor#59). Nothing is pushed; no secrets.
+  image:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - run: scripts/verify.sh image
 
   final:
     runs-on: ubuntu-24.04
