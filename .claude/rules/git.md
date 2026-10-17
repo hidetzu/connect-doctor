@@ -25,6 +25,9 @@
     enters, and permission for it is taken every single time.**
     ⚠ **Auto-merge (`--auto`), merge queues, and merges that bypass protection (`--admin`) are
     forbidden outright.** ⚠ **Never merge on red or in-progress CI.**
+  - ⚠ **One exception, owned by [`adr/0011`](../../docs/adr/0011-a-merge-to-main-releases-itself-through-a-candidate-revision-and-only-dependabot-merges-itself.md):**
+    ⚠ **a Dependabot pull request is merged by the workflow that adr names, once every required
+    check is green.** ⚠ **Not the AI, not `--auto`, and no other author.**
   - ⚠ **Used standalone, every skill still takes permission every time.** Nothing is weakened.
 
 ## ⚠ Never do these without being told

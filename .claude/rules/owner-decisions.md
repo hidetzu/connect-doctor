@@ -60,6 +60,8 @@ now      AI applies ready-for-ai     ->  ... -> PR                ->  ⚠ human 
 - MUST: ⚠ **Exactly one human gate exists per issue, and it is the merge.**
   ⚠ **Never end up with zero.** ⚠ **If you are about to merge without having asked, you have
   misread this file.**
+  ⚠ **The one exception is a Dependabot pull request, which has no issue and no human gate, on
+  purpose** ([`adr/0011`](../../docs/adr/0011-a-merge-to-main-releases-itself-through-a-candidate-revision-and-only-dependabot-merges-itself.md)).
 - MUST: ⚠ **The merge is where it sits because that is the point that cannot be walked back.**
   ⚠ **Applying a label can be.** ⚠ **The gate moved from the reversible end to the irreversible
   one; it was not removed.**
