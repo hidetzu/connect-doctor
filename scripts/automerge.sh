@@ -3,7 +3,7 @@
 # (docs/adr/0011, hidetzu/connect-doctor#62). Run by .github/workflows/automerge.yml.
 #
 #   scripts/automerge.sh run SHA          the checks on SHA finished: merge its PR if decide says so,
-#                                         then dispatch release.yml on main
+#                                         then dispatch release.yml and check.yml on main
 #   scripts/automerge.sh decide DIR SHA   read DIR/{pr,commits,checks,branch}.json; print "merge" or
 #                                         "skip: <reason>"; exit 0 to merge, 1 to skip
 #   scripts/automerge.sh selftest         decide every case in scripts/automerge-fixtures/ (no network)
@@ -34,6 +34,9 @@ decide() {
     else "ok" end' "$d/pr.json")
   [ "$r" = ok ] || { echo "$r"; return 1; }
 
+  # ⚠ author.login comes from the commit's author email, which whoever pushes can
+  #   set: this catches the owner's own commit on a Dependabot branch, it is not
+  #   proof against someone who can push. Only the owner can push here.
   r=$(jq -r --arg bot "$BOT" '
     [.[] | (.author.login // "unknown")] | map(select(. != $bot)) |
     if length == 0 then "ok" else "skip: commits by \(unique | join(", ")) as well as \($bot)" end' "$d/commits.json")
@@ -67,14 +70,14 @@ decide)
   ;;
 
 selftest)
-  # ⚠ Each case must decide as expected AND for the expected reason
-  #   (scripts/automerge-fixtures/expect.tsv).
+  # ⚠ Each case must print exactly the expected line (scripts/automerge-fixtures/expect.tsv):
+  #   the decision and its reason, not a substring of them.
   pass=0; fails=0; seen=0
   while IFS=$'\t' read -r c sha want; do
     case "$c" in ''|'#'*) continue ;; esac
     seen=$((seen+1))
     out=$(decide "scripts/automerge-fixtures/$c" "$sha" || true)
-    if grep -qF -- "$want" <<<"$out"; then pass=$((pass+1))
+    if [ "$out" = "$want" ]; then pass=$((pass+1))
     else echo "FAIL automerge selftest: $c printed \"$out\", want \"$want\""; fails=$((fails+1)); fi
   done < scripts/automerge-fixtures/expect.tsv
   n=$(find scripts/automerge-fixtures -mindepth 1 -maxdepth 1 -type d | wc -l)  # README is not a case
@@ -99,7 +102,9 @@ run)
   # Branch deletion is the repository setting (delete_branch_on_merge), not this script.
   gh pr merge "$pr" --squash --match-head-commit "$sha"
   gh workflow run release.yml --ref main
-  echo "automerge: PR $pr merged; release.yml dispatched on main"
+  # ⚠ check.yml too, so the README badge reports this commit, not the one before it.
+  gh workflow run check.yml --ref main
+  echo "automerge: PR $pr merged; release.yml and check.yml dispatched on main"
   ;;
 
 *) echo "usage: scripts/automerge.sh run SHA | decide DIR SHA | selftest" >&2; exit 2 ;;

@@ -92,7 +92,7 @@ every run summary.**
 | Workflow | When | ⚠ What it is not |
 |---|---|---|
 | `review.yml` | every PR | ⚠ **Not a check of behaviour.** Claude asks `change-review`'s questions of the diff; ⚠ **a PASS there is not a `PASS` here** |
-| `automerge.yml` | each finished `check` / `review` run on a `dependabot/*` PR | ⚠ **Not a check.** It merges a Dependabot PR whose required checks are all green, then dispatches `release.yml`. ⚠ **That merge starts no push run, so `check.yml` on `main` — and the README badge — does not run for it**; `release.yml` runs the same checks through `workflow_call` |
+| `automerge.yml` | each finished `check` / `review` run on a `dependabot/*` PR | ⚠ **Not a check.** It merges a Dependabot PR whose required checks are all green, then dispatches `release.yml` and `check.yml` on `main`. ⚠ **That merge starts no push run**, so both are dispatched explicitly; `check.yml` keeps the README badge on the merged commit |
 | `release.yml` | every push to `main`, ⚠ **and `workflow_dispatch`** (a merge made with `GITHUB_TOKEN` starts no push run) | ⚠ **Not a tier either.** It runs `check.yml` first, then `scripts/release.sh check` — DEPLOY.md § 3 — against the candidate revision, ⚠ **which leaves the machine** |
 
 ## 7. Return
