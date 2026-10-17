@@ -18,7 +18,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 MODEL="${REVIEW_MODEL:-claude-opus-5-5}"
-EFFORT="${REVIEW_EFFORT:-high}"
+EFFORT="${REVIEW_EFFORT:-medium}"
 MAX_DIFF_BYTES=200000   # ⚠ A larger diff is not truncated: it is not reviewed, and says so.
 MARK='<!-- connect-doctor-review -->'
 
