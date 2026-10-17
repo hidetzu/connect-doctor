@@ -87,6 +87,13 @@ first step prints it, and the run summary records it).
 inside the namespace.** ⚠ **The workflow lifts that restriction on the runner only — it says so in
 every run summary.**
 
+⚠ **Two more workflows run around these tiers; neither is a tier** ([`adr/0011`](../../../docs/adr/0011-a-merge-to-main-releases-itself-through-a-candidate-revision-and-only-dependabot-merges-itself.md)):
+
+| Workflow | When | ⚠ What it is not |
+|---|---|---|
+| `review.yml` | every PR | ⚠ **Not a check of behaviour.** Claude asks `change-review`'s questions of the diff; ⚠ **a PASS there is not a `PASS` here** |
+| `release.yml` | every push to `main` | ⚠ **Not a tier either.** It runs `check.yml` first, then `scripts/release.sh check` — DEPLOY.md § 3 — against the candidate revision, ⚠ **which leaves the machine** |
+
 ## 7. Return
 
 The block in [`rules/verification.md`](../../rules/verification.md) § What to return. ⚠ **No other shape.**
