@@ -77,7 +77,7 @@ selftest)
     if grep -qF -- "$want" <<<"$out"; then pass=$((pass+1))
     else echo "FAIL automerge selftest: $c printed \"$out\", want \"$want\""; fails=$((fails+1)); fi
   done < scripts/automerge-fixtures/expect.tsv
-  n=$(find scripts/automerge-fixtures -mindepth 1 -maxdepth 1 -type d | wc -l)
+  n=$(find scripts/automerge-fixtures -mindepth 1 -maxdepth 1 -type d | wc -l)  # README is not a case
   [ "$n" = "$seen" ] || { echo "FAIL automerge selftest: $n cases on disk, $seen in expect.tsv"; fails=$((fails+1)); }
   echo "automerge selftest: $pass passed, $fails failed"
   [ $fails = 0 ]

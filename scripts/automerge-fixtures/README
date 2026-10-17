@@ -1,0 +1,3 @@
+# Fixtures are REDUCED, not raw: each is built from a real API response (pulls/58, pulls/58/commits,
+# check-runs of the head of hidetzu/connect-doctor#70, branches/main; captured 2026-10-17) cut down to
+# the fields decide reads, with a synthetic head SHA. One case changes one field, named after the rule.
