@@ -5,7 +5,7 @@
 #   distroless/static ships /etc/ssl/certs/ca-certificates.crt.
 # ⚠ Standard library only (docs/adr/0006): no module download happens here.
 
-FROM golang:1.26 AS build
+FROM golang:1.27 AS build
 WORKDIR /src
 COPY go.mod ./
 COPY cmd ./cmd
