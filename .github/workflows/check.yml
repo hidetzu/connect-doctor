@@ -9,6 +9,8 @@ on:
   pull_request:
   push:
     branches: [main]
+  # release.yml runs these first, so a release never skips them (docs/adr/0011).
+  workflow_call:
 
 permissions:
   contents: read
