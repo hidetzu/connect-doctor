@@ -14,6 +14,7 @@ names the entry points.** ⚠ **The checks themselves are the tests; this file n
 |---|---|---|---|
 | **Fast** | `scripts/verify.sh fast` | No binary; ⚠ **loopback sockets only** (the fake resolver, and `internal/tlstest`'s TLS servers — ⚠ a real socket because `net.Pipe` deadlocks a failing TLS handshake): gofmt, `go vet` (all tags), `docs-check.mjs`, unit tests incl. the source conformance checks | ⚠ **No** |
 | **Final gate** | `scripts/verify.sh final` | ⚠ **Builds the binary from this tree, runs it, talks HTTP to it**, resolving through `internal/dnstest` on loopback, ⚠ **inside an empty network namespace** (`unshare -rn`) with listeners on permitted addresses | ⚠ **No — and cannot: the namespace has no route out**, and `e2e/main_test.go` refuses to run anywhere else |
+| **Image** | `scripts/verify.sh image` | ⚠ **Builds the `Dockerfile` from this tree — with the Go the Dockerfile names, not `go.mod`'s** — and starts it the way Cloud Run does (`PORT` set, no `-addr`); landing page, a refused metadata address, the CA bundle. ⚠ **Runs the image by the ID the build printed, never by tag.** Needs a Docker daemon, ⚠ **else NOT-VERIFIED** | ⚠ **The build pulls base images.** ⚠ **The container cannot: it sits on an `--internal` network with no route out** |
 | **External** | `scripts/verify.sh external` | ⚠ **The other end is a real resolver and real zones.** Records ours beside `getent`; asserts only that our step ran | ⚠ **Yes — DNS, TCP, TLS, and one `GET` naming ConnectDoctor in its `User-Agent`.** ⚠ **Never on a PR** |
 
 **Partial runs** (every tier):
@@ -30,7 +31,7 @@ scripts/verify.sh <tier> --list         count without running — reads the sour
 
 ```text
 while fixing     scripts/verify.sh fast --only=<what you touched>   then   scripts/verify.sh fast
-before the PR    scripts/verify.sh fast && scripts/verify.sh final
+before the PR    scripts/verify.sh fast && scripts/verify.sh final && scripts/verify.sh image
 occasionally     scripts/verify.sh external    (⚠ say the date and the machine in the report)
 ```
 
@@ -63,6 +64,7 @@ NOT-VERIFIED and exits non-zero** — ⚠ **never a skipped PASS.**
 |---|---|
 | fast | ⚠ **Ours.** Nothing leaves the machine |
 | final | ⚠ **Ours**, ⚠ unless `go build` itself could not run (toolchain) — say which |
+| image | ⚠ **Ours** if a case failed or `go build` failed inside the build; ⚠ **theirs** if a base image could not be pulled — say which |
 | external | ⚠ **Probably theirs.** A resolver or a zone changed. ⚠ **Still FAIL; not evidence our code broke.** Rerun once |
 
 ## 6. What CI runs
@@ -73,6 +75,7 @@ NOT-VERIFIED and exits non-zero** — ⚠ **never a skipped PASS.**
 |---|---|---|
 | fast | runs | — |
 | final gate | runs | ⚠ **Needs an unprivileged network namespace** — see below |
+| image | runs | — |
 | external | ⚠ **never** | ⚠ **Depends on third parties' uptime.** ⚠ **Every run's summary says so** |
 
 ⚠ **Whether the hosted runner can create the namespace is measured on every run** (the workflow's
