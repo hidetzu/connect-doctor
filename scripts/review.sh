@@ -140,11 +140,15 @@ run)
       messages: [{role: "user", content: ("<pull_request>\n" + $pr + "\n</pull_request>\n\n<diff>\n" + $diff + "\n</diff>")}]
     }' > "$work/request"
 
+    # ⚠ A key not scoped to one workspace must name the workspace on every request
+    #   (the API says so in a 400); ANTHROPIC_WORKSPACE_ID comes from a repo variable.
+    ws=(); [ -n "${ANTHROPIC_WORKSPACE_ID:-}" ] && ws=(-H "anthropic-workspace-id: $ANTHROPIC_WORKSPACE_ID")
     curl -sS https://api.anthropic.com/v1/messages \
       -H "Content-Type: application/json" \
       -H "x-api-key: $ANTHROPIC_API_KEY" \
       -H "anthropic-version: 2023-06-01" \
       -H "anthropic-beta: server-side-fallback-2026-07-01" \
+      "${ws[@]}" \
       --max-time 600 -d @"$work/request" > "$work/response" || true
 
     # ⚠ Announced per run, so cost is read off runs, never estimated in a document.

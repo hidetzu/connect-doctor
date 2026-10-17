@@ -36,6 +36,7 @@ jobs:
       - name: Review
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_WORKSPACE_ID: ${{ vars.ANTHROPIC_WORKSPACE_ID }}
           GH_TOKEN: ${{ github.token }}
           REVIEW_MODEL: ${{ vars.REVIEW_MODEL }}
           REVIEW_EFFORT: ${{ vars.REVIEW_EFFORT }}
