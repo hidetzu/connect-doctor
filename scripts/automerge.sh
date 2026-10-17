@@ -92,7 +92,8 @@ run)
   pr=$(gh api "repos/{owner}/{repo}/commits/$sha/pulls" -q "[.[] | select(.state == \"open\")] | first | .number // empty")
   if [ -z "$pr" ]; then echo "automerge: skip: no open pull request has head ${sha:0:7}"; exit 0; fi
   gh api "repos/{owner}/{repo}/pulls/$pr" > "$d/pr.json"
-  gh api "repos/{owner}/{repo}/pulls/$pr/commits" --paginate > "$d/commits.json"
+  # --paginate prints one array per page: merge them into one before decide reads it.
+  gh api "repos/{owner}/{repo}/pulls/$pr/commits" --paginate | jq -s 'add' > "$d/commits.json"
   gh api "repos/{owner}/{repo}/commits/$sha/check-runs?per_page=100" > "$d/checks.json"
   gh api "repos/{owner}/{repo}/branches/main" > "$d/branch.json"
   if ! verdict=$(decide "$d" "$sha"); then

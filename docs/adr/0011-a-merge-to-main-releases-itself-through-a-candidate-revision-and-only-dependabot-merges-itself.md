@@ -29,6 +29,12 @@ main ──> build + push image :<sha> ──> deploy it with no traffic, tagged
    to Sonnet is measured first**: once Opus has a quality baseline on real pull requests, the
    same pull requests are reviewed by Sonnet and the verdicts compared; ⚠ **not switched on
    price alone.**
+   ⚠ **The Dependabot merge was taken in unverified end to end** (owner, 2026-10-17): a
+   `workflow_run` workflow runs only from the default branch, so it cannot be exercised before
+   merge. ⚠ **The first Dependabot pull request after it is the verification**, reported on
+   hidetzu/connect-doctor#62; a failure leaves that pull request to the owner. ⚠ **After the
+   merge it dispatches `check.yml` as well as `release.yml`**, so the README badge reports the
+   merged commit (owner, 2026-10-17).
 5. ⚠ **The target is that every pull request merges itself once the review has earned it.**
    ⚠ **That is a later decision, made by amending this ADR — not by widening the Dependabot rule.**
 
