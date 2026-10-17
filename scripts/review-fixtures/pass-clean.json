@@ -1,0 +1,1 @@
+{"type":"message","model":"claude-opus-5-5","stop_reason":"end_turn","content":[{"type":"thinking","thinking":""},{"type":"text","text":"{\"verdict\":\"PASS\",\"summary\":\"Inside scope; no rule touched.\",\"findings\":[]}"}],"usage":{"input_tokens":10,"output_tokens":5}}

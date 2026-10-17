@@ -25,6 +25,10 @@ main ──> build + push image :<sha> ──> deploy it with no traffic, tagged
    automated review by Claude (`change-review`'s questions, on the diff).
 4. ⚠ **Dependabot pull requests merge themselves** when every required check, the review
    included, passes. ⚠ **Every other pull request is still merged by the owner.**
+   ⚠ **The review runs Claude Opus 5.5 at effort `medium`** (owner, 2026-10-17). ⚠ **Moving it
+   to Sonnet is measured first**: once Opus has a quality baseline on real pull requests, the
+   same pull requests are reviewed by Sonnet and the verdicts compared; ⚠ **not switched on
+   price alone.**
 5. ⚠ **The target is that every pull request merges itself once the review has earned it.**
    ⚠ **That is a later decision, made by amending this ADR — not by widening the Dependabot rule.**
 

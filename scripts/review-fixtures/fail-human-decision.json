@@ -1,0 +1,1 @@
+{"type":"message","model":"claude-opus-5-5","stop_reason":"end_turn","content":[{"type":"text","text":"{\"verdict\":\"HUMAN-DECISION\",\"summary\":\"Changes a sentence a human reads.\",\"findings\":[{\"severity\":\"human-decision\",\"file\":\"internal/diag/words.go\",\"rule\":\"owner-decisions.md\",\"explanation\":\"wording\"}]}"}],"usage":{"input_tokens":10,"output_tokens":5}}

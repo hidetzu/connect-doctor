@@ -1,0 +1,1 @@
+{"type":"message","model":"claude-opus-5-5","stop_reason":"end_turn","content":[{"type":"text","text":"{\"verdict\":\"NEEDS-FIX\",\"summary\":\"A limit is written inline.\",\"findings\":[{\"severity\":\"blocking\",\"file\":\"internal/server/server.go\",\"rule\":\"security.md § 4\",\"explanation\":\"timeout inline\"}]}"}],"usage":{"input_tokens":10,"output_tokens":5}}
