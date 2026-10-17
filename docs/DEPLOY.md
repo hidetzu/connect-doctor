@@ -8,12 +8,10 @@
 § An exercise must not change the world).
 
 ```sh
-PROJECT=connect-doctor-511201
-REGION=asia-northeast1
-REPO=connect-doctor
-SA=connect-doctor-runtime
-IMAGE=$REGION-docker.pkg.dev/$PROJECT/$REPO/connect-doctor:$(git rev-parse --short HEAD)
+eval "$(scripts/release.sh env)"     # PROJECT REGION REPO SERVICE SA IMAGE_REPO — one copy, in the script
+IMAGE=$IMAGE_REPO:$(git rev-parse --short HEAD)
 BILLING=01C888-A9D074-5B7101
+DEPLOYER=connect-doctor-deployer
 ```
 
 ## 1. Once per project
@@ -36,44 +34,78 @@ gcloud billing budgets create --billing-account=$BILLING --display-name="connect
 gcloud auth configure-docker $REGION-docker.pkg.dev
 ```
 
+### Release from GitHub Actions (once; [`adr/0011`](adr/0011-a-merge-to-main-releases-itself-through-a-candidate-revision-and-only-dependabot-merges-itself.md))
+
+```sh
+gcloud services enable iamcredentials.googleapis.com sts.googleapis.com --project $PROJECT
+
+# ⚠ Public access is granted once here, so a release never needs to set IAM on the service.
+gcloud run services add-iam-policy-binding $SERVICE --region $REGION --project $PROJECT \
+  --member=allUsers --role=roles/run.invoker
+
+# ⚠ The deployer is a separate account. ⚠ The runtime account keeps no roles (adr/0008).
+gcloud iam service-accounts create $DEPLOYER --display-name="ConnectDoctor release (GitHub Actions)" --project $PROJECT
+D=serviceAccount:$DEPLOYER@$PROJECT.iam.gserviceaccount.com
+gcloud artifacts repositories add-iam-policy-binding $REPO --location $REGION --project $PROJECT \
+  --member=$D --role=roles/artifactregistry.writer
+# ⚠ Project-level: deploy also polls operations and lists revisions; this project has one service.
+gcloud projects add-iam-policy-binding $PROJECT --member=$D --role=roles/run.developer --condition=None
+# ⚠ actAs on the runtime account only, so a deploy can run as it and as nothing else.
+gcloud iam service-accounts add-iam-policy-binding $SA@$PROJECT.iam.gserviceaccount.com --project $PROJECT \
+  --member=$D --role=roles/iam.serviceAccountUser
+# ⚠ Read-only: § 3 reads the project IAM policy to prove the runtime account has no roles.
+gcloud projects add-iam-policy-binding $PROJECT --member=$D --role=roles/iam.securityReviewer --condition=None
+
+# ⚠ No key file. GitHub's OIDC token is trusted only for this repository (by its immutable id),
+#   on refs/heads/main, from release.yml.
+gcloud iam workload-identity-pools create github --location=global --display-name="GitHub Actions" --project $PROJECT
+gcloud iam workload-identity-pools providers create-oidc connect-doctor --location=global \
+  --workload-identity-pool=github --project $PROJECT \
+  --issuer-uri=https://token.actions.githubusercontent.com \
+  --attribute-mapping=google.subject=assertion.sub,attribute.repository_id=assertion.repository_id,attribute.ref=assertion.ref,attribute.workflow_ref=assertion.workflow_ref \
+  --attribute-condition="assertion.repository_id=='1412545843' && assertion.ref=='refs/heads/main' && assertion.workflow_ref.startsWith('hidetzu/connect-doctor/.github/workflows/release.yml@')"
+NUM=$(gcloud projects describe $PROJECT --format='value(projectNumber)')
+gcloud iam service-accounts add-iam-policy-binding $DEPLOYER@$PROJECT.iam.gserviceaccount.com --project $PROJECT \
+  --role=roles/iam.workloadIdentityUser \
+  --member="principalSet://iam.googleapis.com/projects/$NUM/locations/global/workloadIdentityPools/github/attribute.repository_id/1412545843"
+
+# ⚠ Not secrets: they name the provider and the account, and grant nothing without the condition above.
+gh variable set GCP_WIF_PROVIDER --body "projects/$NUM/locations/global/workloadIdentityPools/github/providers/connect-doctor"
+gh variable set GCP_DEPLOYER_SA --body "$DEPLOYER@$PROJECT.iam.gserviceaccount.com"
+```
+
 ## 2. Every release
+
+⚠ **A push to `main` runs [`release.yml`](../.github/workflows/release.yml), which runs exactly
+the steps below** ([`adr/0011`](adr/0011-a-merge-to-main-releases-itself-through-a-candidate-revision-and-only-dependabot-merges-itself.md)).
+⚠ **By hand, it is the same script.** ⚠ **The deploy flags and their reasons live in
+[`scripts/release.sh`](../scripts/release.sh) only.**
 
 ```sh
 docker build -t $IMAGE .
 docker push $IMAGE
 
-# ⚠ --max-instances 1 bounds what the service can cost and what it can be made to do.
-# ⚠ --concurrency 8 matches limits.ConcurrentChecks; a 9th request gets 503 server.busy.
-# ⚠ --args=-trust-xff: Cloud Run appends the client address as the last X-Forwarded-For entry
-#   (adr/0008); the per-client limits key on it. ⚠ Never set it where no such proxy sits in front.
-# ⚠ -vantage names where checks leave from on the page's chip; ⚠ keep it equal to $REGION.
-#   (^@^ makes @ the separator, because the value contains a comma.)
-# ⚠ -public-url makes og:url / og:image absolute; ⚠ keep it equal to the custom domain (adr/0009).
-# ⚠ --allow-unauthenticated makes it public. That is the product.
-gcloud run deploy connect-doctor --image $IMAGE --region $REGION --project $PROJECT \
-  --service-account $SA@$PROJECT.iam.gserviceaccount.com \
-  --max-instances 1 --concurrency 8 --cpu 1 --memory 512Mi --timeout 60 \
-  --args='^@^-trust-xff@-vantage=Tokyo, Japan@-public-url=https://connect-doctor.hidetzu.work' \
-  --allow-unauthenticated
+# ⚠ A new revision with no traffic, tagged candidate; prints REVISION= and URL=.
+eval "$(scripts/release.sh candidate $IMAGE $(git rev-parse --short HEAD)-manual-$(date +%s))"
 ```
 
-## 3. After every release
+## 3. Before traffic moves
 
 ```sh
-URL=$(gcloud run services describe connect-doctor --region $REGION --project $PROJECT --format='value(status.url)')
-curl -s "$URL/api/check?url=https://example.com" | head -20
-curl -s "$URL/api/check?url=http://169.254.169.254/"        # must be refused
-curl -s "$URL/api/check?url=http://metadata.google.internal/" # must be refused
+# ⚠ § 3 checks, against the candidate's own URL: the forged X-Forwarded-For case first (it
+#   needs this client's burst full), example.com ok, 169.254.169.254 and metadata.google.internal
+#   refused, the runtime account with no roles. ⚠ Non-zero on any failure.
+scripts/release.sh check "$URL"
 
-# ⚠ The per-client limit keys on the real client, not a forged X-Forwarded-For entry:
-#   after the burst, a request with a forged first entry must still get 429.
-for i in 1 2 3 4; do curl -s -o /dev/null -w "%{http_code} " -H "X-Forwarded-For: 192.0.2.$i" \
-  "$URL/api/check?url=https://example.com"; done; echo   # want: 200 200 200 429
+# ⚠ Only after check passed. ⚠ By revision name: never "latest".
+scripts/release.sh promote "$REVISION"
 
-# ⚠ The runtime account must still have no role bindings: this must print nothing.
-gcloud projects get-iam-policy $PROJECT --flatten=bindings --filter="bindings.members:serviceAccount:$SA@" \
-  --format='value(bindings.role)'
+# ⚠ Always, pass or fail: a tagged revision is a second public endpoint with its own limits.
+scripts/release.sh untag
 ```
+
+⚠ **To check the serving revision instead**: `scripts/release.sh check "$(gcloud run services describe
+$SERVICE --region $REGION --project $PROJECT --format='value(status.url)')"`.
 
 ## 4. Custom domain (once; [`adr/0009`](adr/0009-the-public-address-is-connect-doctor-hidetzu-work-through-cloud-run-domain-mapping.md))
 

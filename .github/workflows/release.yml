@@ -1,0 +1,84 @@
+# Every push to main is released through a candidate revision (docs/adr/0011):
+# the checks, then build and push :<sha>, deploy it with no traffic, run
+# DEPLOY.md § 3 against the candidate's own URL, and only then move traffic.
+#
+# ⚠ The steps are scripts/release.sh; this file only orders them.
+# ⚠ workflow_dispatch is how a merge made with GITHUB_TOKEN (Dependabot,
+#   hidetzu/connect-doctor#62) starts a release: such a merge starts no push run.
+# ⚠ GCP trusts this file only on refs/heads/main (DEPLOY.md § 1, Workload
+#   Identity provider condition); a run anywhere else gets no credential.
+name: release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# ⚠ One release at a time, never cancelled half-way: a newer run waits.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    uses: ./.github/workflows/check.yml
+
+  release:
+    needs: check
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+    # ⚠ This job can mint a token that deploys. ⚠ Every action in it is pinned to a full
+    #   commit SHA: a tag can be moved to other code, a SHA cannot. (Dependabot keeps the
+    #   SHA and the version comment current.)
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SA }}
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+      - name: Release variables
+        run: |
+          scripts/release.sh env >> "$GITHUB_ENV"
+          echo "SUFFIX=${GITHUB_SHA::7}-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_ENV"
+          echo "IMAGE_TAG=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+      - name: Build and push
+        run: |
+          gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet
+          docker build -t "$IMAGE_REPO:$IMAGE_TAG" .
+          docker push "$IMAGE_REPO:$IMAGE_TAG"
+      - name: Deploy the candidate (no traffic)
+        id: candidate
+        run: scripts/release.sh candidate "$IMAGE_REPO:$IMAGE_TAG" "$SUFFIX" >> "$GITHUB_OUTPUT"
+      # ⚠ Step outputs reach the shell as environment variables, never spliced into the script.
+      - name: DEPLOY.md § 3 against the candidate
+        env:
+          URL: ${{ steps.candidate.outputs.URL }}
+        run: scripts/release.sh check "$URL"
+      - name: Promote
+        env:
+          REVISION: ${{ steps.candidate.outputs.REVISION }}
+        run: scripts/release.sh promote "$REVISION"
+      - name: Remove the candidate tag
+        if: always() && steps.candidate.outputs.REVISION != ''
+        run: scripts/release.sh untag
+      - name: Summary
+        if: always()
+        env:
+          REVISION: ${{ steps.candidate.outputs.REVISION }}
+          STATUS: ${{ job.status }}
+        run: |
+          {
+            echo "### Release"
+            echo "- image: \`${IMAGE_TAG:-not built}\`"
+            echo "- candidate: \`${REVISION:-not deployed}\`"
+            echo "- result: **$STATUS** — on anything but success, traffic stayed on the revision serving before this run"
+          } >> "$GITHUB_STEP_SUMMARY"
