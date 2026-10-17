@@ -15,3 +15,4 @@ skip-image-failed	2a787a3000000000000000000000000000000000	skip: image concluded
 skip-fast-from-other-app	2a787a3000000000000000000000000000000000	skip: fast has not reported
 skip-nonrequired-failed	2a787a3000000000000000000000000000000000	skip: extra concluded failure
 skip-no-protection	2a787a3000000000000000000000000000000000	skip: no required checks could be read from branch protection
+skip-workflow-file	2a787a3000000000000000000000000000000000	skip: changes .github/workflows/release.yml, .github/workflows/review.yml; GITHUB_TOKEN cannot merge workflow changes, the owner does

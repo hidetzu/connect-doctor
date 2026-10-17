@@ -32,9 +32,13 @@ main ──> build + push image :<sha> ──> deploy it with no traffic, tagged
    ⚠ **The Dependabot merge was taken in unverified end to end** (owner, 2026-10-17): a
    `workflow_run` workflow runs only from the default branch, so it cannot be exercised before
    merge. ⚠ **The first Dependabot pull request after it is the verification**, reported on
-   hidetzu/connect-doctor#62; a failure leaves that pull request to the owner. ⚠ **After the
-   merge it dispatches `check.yml` as well as `release.yml`**, so the README badge reports the
-   merged commit (owner, 2026-10-17).
+   hidetzu/connect-doctor#62. ⚠ **If the merge itself fails, the pull request stays open for
+   the owner. If the merge succeeds and a dispatch fails, `main` is merged but not released**:
+   the automerge run fails visibly, and the next release (any merge, or
+   `gh workflow run release.yml`) carries it. ⚠ **After the merge it dispatches `check.yml` as
+   well as `release.yml`**, so the README badge reports the merged commit (owner, 2026-10-17).
+   ⚠ **A Dependabot change under `.github/workflows/` is not merged by it**: `GITHUB_TOKEN`
+   cannot hold the `workflows` permission, so those (the github-actions updates) are the owner's.
 5. ⚠ **The target is that every pull request merges itself once the review has earned it.**
    ⚠ **That is a later decision, made by amending this ADR — not by widening the Dependabot rule.**
 

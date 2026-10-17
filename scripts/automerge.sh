@@ -4,7 +4,7 @@
 #
 #   scripts/automerge.sh run SHA          the checks on SHA finished: merge its PR if decide says so,
 #                                         then dispatch release.yml and check.yml on main
-#   scripts/automerge.sh decide DIR SHA   read DIR/{pr,commits,checks,branch}.json; print "merge" or
+#   scripts/automerge.sh decide DIR SHA   read DIR/{pr,commits,files,checks,branch}.json; print "merge" or
 #                                         "skip: <reason>"; exit 0 to merge, 1 to skip
 #   scripts/automerge.sh selftest         decide every case in scripts/automerge-fixtures/ (no network)
 #
@@ -36,10 +36,18 @@ decide() {
 
   # ⚠ author.login comes from the commit's author email, which whoever pushes can
   #   set: this catches the owner's own commit on a Dependabot branch, it is not
-  #   proof against someone who can push. Only the owner can push here.
+  #   proof against someone who can push. (Write access: the owner alone, per the
+  #   collaborators API on 2026-10-17; Dependabot pushes its own branches.)
   r=$(jq -r --arg bot "$BOT" '
     [.[] | (.author.login // "unknown")] | map(select(. != $bot)) |
     if length == 0 then "ok" else "skip: commits by \(unique | join(", ")) as well as \($bot)" end' "$d/commits.json")
+  [ "$r" = ok ] || { echo "$r"; return 1; }
+
+  # ⚠ GITHUB_TOKEN cannot hold the `workflows` permission, so GitHub refuses its
+  #   merge of a change under .github/workflows/ (github-actions updates). Skip it
+  #   with that reason instead of failing at the merge; the owner merges it.
+  r=$(jq -r '[.[].filename | select(startswith(".github/workflows/"))] |
+    if length == 0 then "ok" else "skip: changes \(join(", ")); GITHUB_TOKEN cannot merge workflow changes, the owner does" end' "$d/files.json")
   [ "$r" = ok ] || { echo "$r"; return 1; }
 
   r=$(jq -r --slurpfile branch "$d/branch.json" '
@@ -94,7 +102,8 @@ run)
   gh api "repos/{owner}/{repo}/pulls/$pr" > "$d/pr.json"
   # --paginate prints one array per page: merge them into one before decide reads it.
   gh api "repos/{owner}/{repo}/pulls/$pr/commits" --paginate | jq -s 'add' > "$d/commits.json"
-  gh api "repos/{owner}/{repo}/commits/$sha/check-runs?per_page=100" > "$d/checks.json"
+  gh api "repos/{owner}/{repo}/pulls/$pr/files" --paginate | jq -s 'add' > "$d/files.json"
+  gh api "repos/{owner}/{repo}/commits/$sha/check-runs?per_page=100" --paginate | jq -s '{check_runs: (map(.check_runs) | add)}' > "$d/checks.json"
   gh api "repos/{owner}/{repo}/branches/main" > "$d/branch.json"
   if ! verdict=$(decide "$d" "$sha"); then
     echo "automerge: PR $pr: $verdict"; exit 0
