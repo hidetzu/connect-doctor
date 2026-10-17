@@ -8,6 +8,7 @@
 #                                                revision and its URL as REVISION= / URL=
 #   scripts/release.sh check URL                 DEPLOY.md § 3 against URL; non-zero on any failure
 #   scripts/release.sh promote REVISION          send 100 % of traffic to REVISION
+#   scripts/release.sh untag                     remove the candidate tag and its URL
 #
 # ⚠ Every subcommand except env and check acts on the real service.
 # ⚠ There is no dry-run mode (.claude/rules/verification.md § An exercise must
@@ -107,5 +108,15 @@ promote)
   echo "release: $rev now serves 100 % of traffic"
   ;;
 
-*) echo "usage: scripts/release.sh env | candidate IMAGE SUFFIX | check URL | promote REVISION" >&2; exit 2 ;;
+untag)
+  # ⚠ A tagged revision answers on its own public URL with its own instance, so its own
+  #   in-memory limits (adr/0010) and its own --max-instances 1. ⚠ Left behind after a failed
+  #   check, it would be a second, unchecked endpoint until the next release; so it is removed
+  #   after every release, whatever the outcome.
+  gcloud run services update-traffic "$SERVICE" --region "$REGION" --project "$PROJECT" \
+    --remove-tags candidate --quiet >&2
+  echo "release: candidate tag removed"
+  ;;
+
+*) echo "usage: scripts/release.sh env | candidate IMAGE SUFFIX | check URL | promote REVISION | untag" >&2; exit 2 ;;
 esac

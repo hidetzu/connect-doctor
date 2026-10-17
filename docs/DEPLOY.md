@@ -99,6 +99,9 @@ scripts/release.sh check "$URL"
 
 # ⚠ Only after check passed. ⚠ By revision name: never "latest".
 scripts/release.sh promote "$REVISION"
+
+# ⚠ Always, pass or fail: a tagged revision is a second public endpoint with its own limits.
+scripts/release.sh untag
 ```
 
 ⚠ **To check the serving revision instead**: `scripts/release.sh check "$(gcloud run services describe

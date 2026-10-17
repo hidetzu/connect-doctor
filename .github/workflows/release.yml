@@ -33,13 +33,18 @@ jobs:
     permissions:
       contents: read
       id-token: write
+    # ⚠ This job can mint a token that deploys. ⚠ Every action in it is pinned to a full
+    #   commit SHA: a tag can be moved to other code, a SHA cannot. (Dependabot keeps the
+    #   SHA and the version comment current.)
     steps:
-      - uses: actions/checkout@v7
-      - uses: google-github-actions/auth@v3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
         with:
           workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
           service_account: ${{ vars.GCP_DEPLOYER_SA }}
-      - uses: google-github-actions/setup-gcloud@v3.0.1
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
       - name: Release variables
         run: |
           scripts/release.sh env >> "$GITHUB_ENV"
@@ -53,16 +58,27 @@ jobs:
       - name: Deploy the candidate (no traffic)
         id: candidate
         run: scripts/release.sh candidate "$IMAGE_REPO:$IMAGE_TAG" "$SUFFIX" >> "$GITHUB_OUTPUT"
+      # ⚠ Step outputs reach the shell as environment variables, never spliced into the script.
       - name: DEPLOY.md § 3 against the candidate
-        run: scripts/release.sh check "${{ steps.candidate.outputs.URL }}"
+        env:
+          URL: ${{ steps.candidate.outputs.URL }}
+        run: scripts/release.sh check "$URL"
       - name: Promote
-        run: scripts/release.sh promote "${{ steps.candidate.outputs.REVISION }}"
+        env:
+          REVISION: ${{ steps.candidate.outputs.REVISION }}
+        run: scripts/release.sh promote "$REVISION"
+      - name: Remove the candidate tag
+        if: always() && steps.candidate.outputs.REVISION != ''
+        run: scripts/release.sh untag
       - name: Summary
         if: always()
+        env:
+          REVISION: ${{ steps.candidate.outputs.REVISION }}
+          STATUS: ${{ job.status }}
         run: |
           {
             echo "### Release"
             echo "- image: \`${IMAGE_TAG:-not built}\`"
-            echo "- candidate: \`${{ steps.candidate.outputs.REVISION || 'not deployed' }}\`"
-            echo "- result: **${{ job.status }}** — on anything but success, traffic stayed on the revision serving before this run"
+            echo "- candidate: \`${REVISION:-not deployed}\`"
+            echo "- result: **$STATUS** — on anything but success, traffic stayed on the revision serving before this run"
           } >> "$GITHUB_STEP_SUMMARY"
