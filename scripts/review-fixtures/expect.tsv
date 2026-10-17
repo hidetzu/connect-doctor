@@ -1,0 +1,11 @@
+# fixture	exit	the line judge must print (the reason, not just the exit)
+pass-clean.json	0	review: verdict PASS
+pass-non-blocking-note.json	0	review: verdict PASS
+fail-needs-fix.json	1	review: verdict NEEDS-FIX
+fail-human-decision.json	1	review: verdict HUMAN-DECISION
+fail-pass-with-blocking.json	1	the verdict says PASS but a finding is blocking
+fail-refusal.json	1	the model declined (category: cyber)
+fail-max-tokens.json	1	cut off at max_tokens
+fail-api-error.json	1	API error: overloaded_error
+fail-not-json.json	1	the response is not JSON
+fail-text-not-verdict.json	1	the text is not the verdict object

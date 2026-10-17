@@ -121,6 +121,7 @@ if [ "$tier" = fast ]; then
   bad=$(gofmt -l . ); if [ -n "$bad" ]; then echo "FAIL gofmt: $bad"; fail=1; else echo "ok   gofmt"; fi
   if go vet ./... && go vet -tags e2e ./... && go vet -tags external ./...; then echo "ok   go vet"; else echo "FAIL go vet"; fail=1; fi
   if node .claude/tools/docs-check.mjs; then :; else fail=1; fi
+  if scripts/review.sh selftest; then :; else fail=1; fi
 fi
 
 args=(-count=1 -v)

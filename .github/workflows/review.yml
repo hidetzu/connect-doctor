@@ -1,0 +1,61 @@
+# The automated review on every pull request (docs/adr/0011,
+# hidetzu/connect-doctor#60): scripts/review.sh asks Claude change-review's
+# questions about the diff and fails unless the verdict is PASS.
+#
+# ⚠ The job checks out the BASE commit, not the pull request: the reviewer
+#   script and the rules it applies come from main. A pull request is data
+#   here; nothing from it runs.
+# ⚠ A fork's pull request gets no secrets, so the review cannot run there; the
+#   job says so and passes, and the owner reviews that PR by hand. A pull
+#   request from this repository with no key is a misconfiguration and fails.
+name: review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+# ⚠ A newer push cancels the review of an older one, so an old verdict
+#   cannot land after the current one.
+concurrency:
+  group: review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    runs-on: ubuntu-24.04
+    # ⚠ This job holds the API key: its actions are pinned to full commit SHAs.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+      - name: Review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_TOKEN: ${{ github.token }}
+          REVIEW_MODEL: ${{ vars.REVIEW_MODEL }}
+          REVIEW_EFFORT: ${{ vars.REVIEW_EFFORT }}
+          PR: ${{ github.event.pull_request.number }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          IS_FORK: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
+        run: |
+          if [ ! -x scripts/review.sh ]; then
+            echo "review: NOT RUN — the reviewer is not on the base commit yet (it arrives with its own PR)"
+            echo "- **review**: NOT RUN — the reviewer is not on the base commit yet" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          set +e
+          scripts/review.sh run "$PR" "$BASE_SHA"
+          s=$?
+          set -e
+          if [ "$s" = 3 ] && [ "$IS_FORK" = true ]; then
+            echo "::notice::review NOT RUN: a fork's pull request gets no secrets; the owner reviews it by hand"
+            echo "- **review**: NOT RUN (fork, no secrets) — reviewed by hand" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          exit "$s"
