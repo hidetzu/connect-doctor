@@ -12,7 +12,7 @@ names the entry points.** ⚠ **The checks themselves are the tests; this file n
 
 | Tier | Command | What separates it | ⚠ Leaves the machine? |
 |---|---|---|---|
-| **Fast** | `scripts/verify.sh fast` | No binary; ⚠ **loopback sockets only** (the fake resolver, and `internal/tlstest`'s TLS servers — ⚠ a real socket because `net.Pipe` deadlocks a failing TLS handshake): gofmt, `go vet` (all tags), `docs-check.mjs`, `scripts/review.sh selftest` (the review's verdict reading, against saved responses), unit tests incl. the source conformance checks | ⚠ **No** |
+| **Fast** | `scripts/verify.sh fast` | No binary; ⚠ **loopback sockets only** (the fake resolver, and `internal/tlstest`'s TLS servers — ⚠ a real socket because `net.Pipe` deadlocks a failing TLS handshake): gofmt, `go vet` (all tags), `docs-check.mjs`, `scripts/review.sh selftest` (the review's verdict reading, against saved responses), `scripts/automerge.sh selftest` (the Dependabot merge decision, against saved API responses), unit tests incl. the source conformance checks | ⚠ **No** |
 | **Final gate** | `scripts/verify.sh final` | ⚠ **Builds the binary from this tree, runs it, talks HTTP to it**, resolving through `internal/dnstest` on loopback, ⚠ **inside an empty network namespace** (`unshare -rn`) with listeners on permitted addresses | ⚠ **No — and cannot: the namespace has no route out**, and `e2e/main_test.go` refuses to run anywhere else |
 | **Image** | `scripts/verify.sh image` | ⚠ **Builds the `Dockerfile` from this tree — with the Go the Dockerfile names, not `go.mod`'s** — and starts it the way Cloud Run does (`PORT` set, no `-addr`); landing page, a refused metadata address, the CA bundle. ⚠ **Runs the image by the ID the build printed, never by tag.** Needs a Docker daemon, ⚠ **else NOT-VERIFIED** | ⚠ **The build pulls base images.** ⚠ **The container cannot: it sits on an `--internal` network with no route out** |
 | **External** | `scripts/verify.sh external` | ⚠ **The other end is a real resolver and real zones.** Records ours beside `getent`; asserts only that our step ran | ⚠ **Yes — DNS, TCP, TLS, and one `GET` naming ConnectDoctor in its `User-Agent`.** ⚠ **Never on a PR** |
@@ -92,6 +92,7 @@ every run summary.**
 | Workflow | When | ⚠ What it is not |
 |---|---|---|
 | `review.yml` | every PR | ⚠ **Not a check of behaviour.** Claude asks `change-review`'s questions of the diff; ⚠ **a PASS there is not a `PASS` here** |
+| `automerge.yml` | each finished `check` / `review` run on a `dependabot/*` PR | ⚠ **Not a check.** It merges a Dependabot PR whose required checks are all green, then dispatches `release.yml` and `check.yml` on `main`. ⚠ **That merge starts no push run**, so both are dispatched explicitly; `check.yml` keeps the README badge on the merged commit |
 | `release.yml` | every push to `main`, ⚠ **and `workflow_dispatch`** (a merge made with `GITHUB_TOKEN` starts no push run) | ⚠ **Not a tier either.** It runs `check.yml` first, then `scripts/release.sh check` — DEPLOY.md § 3 — against the candidate revision, ⚠ **which leaves the machine** |
 
 ## 7. Return

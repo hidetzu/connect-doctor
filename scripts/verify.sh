@@ -122,6 +122,7 @@ if [ "$tier" = fast ]; then
   if go vet ./... && go vet -tags e2e ./... && go vet -tags external ./...; then echo "ok   go vet"; else echo "FAIL go vet"; fail=1; fi
   if node .claude/tools/docs-check.mjs; then :; else fail=1; fi
   if scripts/review.sh selftest; then :; else fail=1; fi
+  if scripts/automerge.sh selftest; then :; else fail=1; fi
 fi
 
 args=(-count=1 -v)

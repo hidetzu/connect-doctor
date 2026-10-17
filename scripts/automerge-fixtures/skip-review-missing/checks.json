@@ -1,0 +1,31 @@
+{
+ "check_runs": [
+  {
+   "name": "final",
+   "status": "completed",
+   "conclusion": "success",
+   "started_at": "2026-10-17T13:17:58Z",
+   "app": {
+    "id": 15368
+   }
+  },
+  {
+   "name": "fast",
+   "status": "completed",
+   "conclusion": "success",
+   "started_at": "2026-10-17T13:17:58Z",
+   "app": {
+    "id": 15368
+   }
+  },
+  {
+   "name": "image",
+   "status": "completed",
+   "conclusion": "success",
+   "started_at": "2026-10-17T13:17:58Z",
+   "app": {
+    "id": 15368
+   }
+  }
+ ]
+}
